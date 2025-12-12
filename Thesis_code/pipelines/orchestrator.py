@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 from utils import logger
-from pipelines.prep_work import initialize_plot        # keep only this
+from pipelines.prep_work import initialize_plot
 from pipelines.simulation import compute_reference_solutions
 from pipelines.io_pipeline import save_reference_and_noisy_solutions
 from pipelines.plotting_pipeline import (
@@ -155,7 +155,7 @@ class SolveEigenWorkflow:
         correction: bool,
         order: int,
         mu_order: str,
-        F_model,                      # <-- INJECTED FROM MAIN.PY
+        F_model,
         tau: float,
         tolerance: int,
         R_value: float,
@@ -178,7 +178,7 @@ class SolveEigenWorkflow:
         mu_array, R, EV0_flat = self._compute_mu(
             correction,
             mu_order,
-            F_model.__name__,  # used only for naming files
+            F_model.__name__,
             tau,
             order,
             use_only_acoustic,
@@ -187,20 +187,31 @@ class SolveEigenWorkflow:
             use_saved_mu,
         )
 
-        # 2) Prepare main plot (extract μ(R = R_value))
+        # Flatten branch-2 EV0 if available
+        EV0_branch2_flat = None
+        if getattr(self.mu_pipeline, "EV0_branch2", None) is not None:
+            try:
+                EV0_branch2_flat = np.hstack(self.mu_pipeline.EV0_branch2).ravel()
+            except Exception as exc:
+                self.logger.error(f"Failed to flatten EV0_branch2: {exc}")
+                EV0_branch2_flat = None
+
+        # 2) Prepare main plot (extract μ(R = R_value) and set s1/s2)
         fig, ax, mu_for_R, save_path = initialize_plot(
             tolerance,
             R,
             R_value,
             mu_order,
             mu_array,
-            EV0_flat,
+            EV0_flat,          # branch 1 EV0
+            EV0_branch2_flat,  # branch 2 EV0 (or None)
             self.config,
             tau,
             filename,
             correction,
             enforce_symmetry,
         )
+
 
         # 3) Optionally compute TXT eigenvalue reference solutions
         if save_solution:

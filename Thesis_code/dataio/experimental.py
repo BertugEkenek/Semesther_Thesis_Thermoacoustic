@@ -31,7 +31,7 @@ def overlay_experimental_eigenvalues(ax, mat_file: str, omega_ref: float, tolera
             (omega_vals > omega_ref - tolerance*2) &
             (omega_vals < omega_ref + tolerance*2) &
             (np.abs(sigma_vals) < 1000)            &
-            (omega_vals < 1500) # Hard cutoff for better visualization
+            (omega_vals < 4000) # Hard cutoff for better visualization
 
         )
 
@@ -63,7 +63,7 @@ def overlay_reference_eigenvalues(ax, txt_file: str, omega_ref: float, tolerance
             (omega_vals > omega_ref - tolerance*2) &
             (omega_vals < omega_ref + tolerance*2) &
             (np.abs(sigma_vals) < 1000) &   # optional cutoff
-            (omega_vals < 1500)             # optional cutoff
+            (omega_vals < 3000)             # optional cutoff
         )
 
         ax.scatter(omega_vals[mask], sigma_vals[mask], color='green', marker='+', label='Reference Data')

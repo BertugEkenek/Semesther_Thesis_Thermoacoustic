@@ -1,42 +1,46 @@
 # main.py
 
 import numpy as np
-
-from utils import logger
 from config.configuration import Configuration
 from pipelines.mu_pipeline import MUFITPipeline
 from pipelines.orchestrator import SolveEigenWorkflow
 from models.flame_models import F_pade, F_taylor
-
+from utils import logger
 
 def main():
-
+    
     # -----------------------------------------------------------
     # 1. User-configurable parameters
     # -----------------------------------------------------------
-    config_name = "BRS"            # Alternatives: "Rijke_tube_2", "BRS"
+    config_name = "Rijke_tube_1"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
+    config = Configuration(config_name)
     flame_model_choice = "Padé"             # "Padé" or "Taylor"
-    mu_order = "Second"                     # "First" or "Second"
-    Galerkin = "Second"                     # "First" or "Second"
+    mu_order = "First"                     # "First" or "Second"
+    Galerkin = "First"                     # "First" or "Second"
 
     correction = True
     enforce_symmetry = True
-    use_only_acoustic = True
+    use_only_acoustic = False
 
+
+    # --- Multi-branch configuration ---
+    num_acoustic_branches = 2            # Set to 2 when using two .mat files
+    fit_branches = [1, 2]                # Later: [1, 2] to use two branches
+    
     save_mu = False
     use_saved_mu = False
 
     save_solution = False
     use_txt_solutions = False
 
-    tau = 0.007
+    tau = 0.004
     order = 7
-    R_value = -0.70
+    R_value = -1.0
     
     # needed for save_solution
     n_values = np.linspace(0.001, 4.0, 11)
 
-    tolerance = 1200
+    tolerance = 2000
     show_tax = True
     show_fig = True
     save_fig = True
@@ -47,9 +51,14 @@ def main():
     # -----------------------------------------------------------
     # 2. Configuration object
     # -----------------------------------------------------------
-    config = Configuration(config_name)
-    config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}.mat"
+    config.lsq_method = "trf"          # or "lm"
+    config.mu_reg_lambda = 5  # try 0.1, 0.2, etc.
+    config.mu_two_stage = False
+    config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}_tau_{int(tau*1000)}ms.mat"
+    #config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}.mat"
     config.txt_solution_path = "./Results/Solutions/Reference_case.txt"
+    branch2_data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}_second_branch_tau_{int(tau*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
+    #branch2_data_path = None          # Path to second branch .mat (when num_acoustic_branches == 2)
 
 
     # -----------------------------------------------------------
@@ -74,7 +83,13 @@ def main():
         use_only_acoustic=use_only_acoustic,
         use_txt_solutions=use_txt_solutions,
         enforce_symmetry=enforce_symmetry,
+
+        # --- NEW multi-branch arguments ---
+        num_acoustic_branches=num_acoustic_branches,
+        fit_branches=fit_branches,
+        branch2_data_path=branch2_data_path,
     )
+
 
     mu_pipeline.load_all_data()
     mu_pipeline.prepare()

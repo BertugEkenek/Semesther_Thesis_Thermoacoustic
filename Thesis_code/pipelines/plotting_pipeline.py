@@ -41,20 +41,20 @@ def plot_eigenvalue_trajectories(
             label=f"{flame_model_approximator} Approx with correction μ",
             cmap="jet",
         )
-        plot_roots_over_n(
-            F_model,
-            tau,
-            order,
-            config,
-            mu,
-            mu_order,
-            Galerkin,
-            tolerance,
-            False,
-            enforce_symmetry,
-            label=f"{flame_model_approximator} Approx",
-            cmap="jet",
-        )
+        # plot_roots_over_n(
+        #     F_model,
+        #     tau,
+        #     order,
+        #     config,
+        #     mu,
+        #     mu_order,
+        #     Galerkin,
+        #     tolerance,
+        #     False,
+        #     enforce_symmetry,
+        #     label=f"{flame_model_approximator} Approx",
+        #     cmap="jet",
+        # )
 
     elif Galerkin == "First" and not correction:
         mu = 1.0

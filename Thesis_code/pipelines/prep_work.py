@@ -1,10 +1,13 @@
 # pipelines/prep_work.py
 
 import os
-import logging
+from utils import logger
 import numpy as np
 import matplotlib.pyplot as plt
 
+# --------------------------------------------------------------
+# Plot initialization
+# --------------------------------------------------------------
 # --------------------------------------------------------------
 # Plot initialization
 # --------------------------------------------------------------
@@ -14,7 +17,8 @@ def initialize_plot(
     R_value: float,
     mu_order: str,
     mu_array: np.ndarray,
-    EV0: np.ndarray,
+    EV0_branch1: np.ndarray,
+    EV0_branch2: np.ndarray | None,
     config: object,
     tau: float,
     filename: str,
@@ -22,25 +26,59 @@ def initialize_plot(
     enforce_symmetry: bool,
 ):
     """
-    Replicates the original behavior from pipeline.py but as pure functions.
+    Initialize plotting and configure base acoustic modes for the solver.
+
+    Behavior:
+      - Mode 1 (s_1) always comes from branch-1 EV0 at the selected R.
+      - Mode 2 (s_2) comes from branch-2 EV0 if available; otherwise fallback
+        to config.w_R_table[R] and finally to config.w[1].
+
+      - μ is taken from mu_array at the closest R index.
+      - Plot styling (axis labels, title, grid, save path) preserved.
     """
 
-    logging.info(
-        f"Initializing plot for R={R_value}, mu_order={mu_order}, correction={correction}"
+    logger.info(
+        f"Initializing plot for R={R_value}, mu_order={mu_order}, "
+        f"correction={correction}"
     )
 
     # float-safe index for the requested R_value
-    index = np.argmin(np.abs(R - R_value))
+    index = int(np.argmin(np.abs(R - R_value)))
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
+    # -------------------------------
+    # Set base acoustic modes (s1, s2)
+    # -------------------------------
+    s_1 = EV0_branch1[index]
+    config.w[0] = s_1
+
+    # Mode 2: use branch-2 EV0 if provided, else fallback to table / previous
+    if EV0_branch2 is not None:
+        s_2 = EV0_branch2[index]
+    else:
+        try:
+            s_2 = config.w_R_table[float(R_value)]
+        except Exception:
+            s_2 = config.w[1]
+            logger.debug(
+                f"[initialize_plot] Using config.w[1] as s_2 fallback at R={R_value}."
+            )
+
+    config.w[1] = s_2
+
+    logger.info(f"[initialize_plot] s_1 = {s_1}, s_2 = {s_2}")
+
+    # -------------------------------
+    # Correction / μ usage
+    # -------------------------------
     if correction:
         ax.axhline(0, color="gray", linestyle="--")
 
         if mu_order == "First":
-            config.w1 = EV0[index]
-            mu = mu_array[index][0] + mu_array[index][1] * 1j
-            logging.info(f"Using mu = {mu}")
+            mu = mu_array[index][0] + 1j * mu_array[index][1]
+            logger.info(f"[initialize_plot] Using first-order μ = {mu}")
+
             ax.axvline(
                 config.w[0].imag,
                 color="black",
@@ -52,26 +90,16 @@ def initialize_plot(
         elif mu_order == "Second":
             mu = mu_array[index]
 
-            # Flatten as original code did
-            EV0_flat = np.hstack(EV0).ravel()
-            s_1 = EV0_flat[index]
-            config.w[0] = s_1
-
-            s_2 = config.w_R_table[R_value]
-            config.w[1] = s_2
-
-            logging.info(f"Using s_1 = {s_1}, s_2 = {s_2}")
-
             if enforce_symmetry:
-                logging.info(
-                    "Using μ values:\n"
+                logger.info(
+                    "Using symmetric second-order μ values:\n"
                     f"  μ11 = {mu[0]:.4f} + i {mu[1]:.4f}\n"
                     f"  μ22 = {mu[2]:.4f} + i {mu[3]:.4f}\n"
                     f"  μ12 = μ21 = {mu[4]:.4f} + i {mu[5]:.4f}"
                 )
             else:
-                logging.info(
-                    "Using μ values:\n"
+                logger.info(
+                    "Using second-order μ values:\n"
                     f"  μ11 = {mu[0]:.4f} + i {mu[1]:.4f}\n"
                     f"  μ22 = {mu[2]:.4f} + i {mu[3]:.4f}\n"
                     f"  μ12 = {mu[4]:.4f} + i {mu[5]:.4f}\n"
@@ -91,7 +119,7 @@ def initialize_plot(
 
     else:
         mu = 1.0
-        logging.info("No correction applied, using mu = 1.0")
+        logger.info("[initialize_plot] No correction applied, using μ = 1.0")
         ax.axhline(0, color="gray", linestyle="--")
         ax.axvline(
             config.w[0].imag,
@@ -101,7 +129,7 @@ def initialize_plot(
             label="ω₁",
         )
 
-    # Labels and title
+    # Labels and title (preserved)
     ax.set_xlabel("Frequency (rad/s)")
     ax.set_ylabel("Growth rate (rad/s)")
     ax.set_title(
@@ -110,8 +138,8 @@ def initialize_plot(
     ax.grid(True)
     plt.tight_layout()
 
-    # Save location
-    save_dir = f"./Results/Plots/{config.name}/{int(tau*1000)}ms/"
+    # Save location (preserved)
+    save_dir = f"./Results/Plots/{config.name}/{int(tau * 1000)}ms/"
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, filename)
 
