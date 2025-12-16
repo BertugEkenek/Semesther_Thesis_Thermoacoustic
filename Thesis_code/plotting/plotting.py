@@ -26,7 +26,7 @@ def plot_roots_over_n(
     Plot the eigenvalues of a given flame model over a range of n values.
     """
 
-    n_vals = np.linspace(0.001, 1.0, 31)
+    n_vals = np.linspace(0.001, 4.0, 31)
     norm = Normalize(vmin=n_vals[0], vmax=n_vals[-1])
     smap = ScalarMappable(norm=norm, cmap=cmap)
 
@@ -53,7 +53,7 @@ def plot_roots_over_n(
             if (
                 abs(r.imag - w1) < tolerance
                 and r.imag > 0
-                and r.imag < 3000  # hard cutoff for better visualization
+                and r.imag < 4000  # hard cutoff for better visualization
             )
             and abs(r.real) < tolerance
         ]

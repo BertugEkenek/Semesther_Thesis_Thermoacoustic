@@ -15,8 +15,8 @@ def main():
     config_name = "Rijke_tube_1"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
     flame_model_choice = "Padé"             # "Padé" or "Taylor"
-    mu_order = "First"                     # "First" or "Second"
-    Galerkin = "First"                     # "First" or "Second"
+    mu_order = "Second"                     # "First" or "Second"
+    Galerkin = "Second"                     # "First" or "Second"
 
     correction = True
     enforce_symmetry = True
@@ -24,7 +24,7 @@ def main():
 
 
     # --- Multi-branch configuration ---
-    num_acoustic_branches = 2            # Set to 2 when using two .mat files
+    num_acoustic_branches = 2           # Set to 2 when using two .mat files
     fit_branches = [1, 2]                # Later: [1, 2] to use two branches
     
     save_mu = False
@@ -34,7 +34,7 @@ def main():
     use_txt_solutions = False
 
     tau = 0.004
-    order = 7
+    order = 12
     R_value = -1.0
     
     # needed for save_solution
@@ -52,12 +52,24 @@ def main():
     # 2. Configuration object
     # -----------------------------------------------------------
     config.lsq_method = "trf"          # or "lm"
-    config.mu_reg_lambda = 5  # try 0.1, 0.2, etc.
-    config.mu_two_stage = False
-    config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}_tau_{int(tau*1000)}ms.mat"
+    config.mu_reg_lambda = 0.5
+    config.mu_init_lambda = 0.1
+    config.mu_constraint_lambda = 0
+    config.mu_neg_real_lambda= 0.0
+
+    config.mu_target_weights = {
+        "mu11": 1.0,
+        "mu22": 1.0,
+        "mu12": 0.0,
+    }
+    n_last = 4
+    number_of_n = 101
+
+    config.mu_hard_constraint = True
+    config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
     #config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}.mat"
     config.txt_solution_path = "./Results/Solutions/Reference_case.txt"
-    branch2_data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}_second_branch_tau_{int(tau*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
+    branch2_data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
     #branch2_data_path = None          # Path to second branch .mat (when num_acoustic_branches == 2)
 
 
@@ -83,8 +95,6 @@ def main():
         use_only_acoustic=use_only_acoustic,
         use_txt_solutions=use_txt_solutions,
         enforce_symmetry=enforce_symmetry,
-
-        # --- NEW multi-branch arguments ---
         num_acoustic_branches=num_acoustic_branches,
         fit_branches=fit_branches,
         branch2_data_path=branch2_data_path,

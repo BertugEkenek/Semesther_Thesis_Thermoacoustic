@@ -125,7 +125,7 @@ def overlay_data_if_requested(
     """
 
     if show_tax:
-        mat_file = f"./data/tax_data/{int(tau*1000)}ms/R={R_value}/tax_{config.name}.mat"
+        mat_file = f"./data/tax_data/{int(tau*1000)}ms/R={R_value}/tax_{config.name}_first_branch_up_to_n=4_with_number_of_n=31_tau={int(tau*1000)}ms.mat"
         overlay_experimental_eigenvalues(
             ax,
             mat_file,

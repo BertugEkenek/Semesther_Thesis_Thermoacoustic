@@ -273,7 +273,7 @@ class MUFITPipeline:
             available, otherwise from config.w_R_table or config.w[1]),
           - stacks all n-samples (and optional extra branches)
             into a global M μ - b system,
-          - calls second_order_fit.mu_array_stacked to solve a
+          - calls second_order_fit.solve_mu_per_R to solve a
             bounded nonlinear LSQ for p (μ-parameters).
 
         Returns
@@ -366,7 +366,7 @@ class MUFITPipeline:
             # -----------------------------------
             # Global per-R μ-fit using second-order model
             # -----------------------------------
-            _, p_opt, info = sofit.mu_array_stacked(
+            p_opt, info = sofit.solve_mu_per_R(
                 config=config,
                 n=n,
                 tau=tau,
@@ -737,7 +737,7 @@ class MUFITPipeline:
             available, otherwise from config.w_R_table or config.w[1]),
           - stacks all n-samples (and optional extra branches)
             into a global M μ - b system,
-          - calls second_order_fit.mu_array_stacked to solve a
+          - calls second_order_fit.solve_mu_per_R to solve a
             bounded nonlinear LSQ for p (μ-parameters).
 
         Returns
@@ -827,10 +827,52 @@ class MUFITPipeline:
                     }
                 )
 
-            # -----------------------------------
-            # Global per-R μ-fit using second-order model
-            # -----------------------------------
-            _, p_opt, info = sofit.mu_array_stacked(
+            # -------------------------------------------------
+            # Linear initialization
+            # -------------------------------------------------
+            mu11_init = self._linear_mu_complex(
+                config=config,
+                n=n,
+                tau=tau,
+                w_big=w_big_1,
+                sigma_big=sigma_big_1,
+                s_ref=s_1,
+            )
+
+            mu22_init = None
+            if extra_branches:
+                w_big_2 = extra_branches[0]["w_big"]
+                sigma_big_2 = extra_branches[0]["sigma_big"]
+                s_ref_2 = extra_branches[0]["s_ref"]
+
+                mu22_init = self._linear_mu_complex(
+                    config=config,
+                    n=n,
+                    tau=tau,
+                    w_big=w_big_2,
+                    sigma_big=sigma_big_2,
+                    s_ref=s_ref_2,
+                )
+
+            def _fmt_mu(mu):
+                if mu is None:
+                    return "None"
+                return (
+                    f"{mu.real:+.4e} {mu.imag:+.4e}j "
+                    f"(abs={abs(mu):.4e}, arg={np.angle(mu):+.3f})"
+                )
+
+            self.logger.info(
+                f"[init μ | R-index={i} | R={self.R[i]:.3f}]\n"
+                f"  mu11_init = {_fmt_mu(mu11_init)}\n"
+                f"  mu22_init = {_fmt_mu(mu22_init)}"
+            )
+
+
+            # -------------------------------------------------
+            # Second-order solve (diagonals warm-started)
+            # -------------------------------------------------
+            p_opt, info = sofit.solve_mu_per_R(
                 config=config,
                 n=n,
                 tau=tau,
@@ -843,11 +885,15 @@ class MUFITPipeline:
                 weights=None,
                 quiet=False,
                 extra_branches=extra_branches if extra_branches else None,
+                init_mu11=mu11_init,
+                init_mu22=mu22_init,
             )
 
+
             p_list.append(p_opt)
-            b1 = info.get("branch1_summary", None)
-            b2 = info.get("branch2_summary", None)
+            b1 = info.get("branch1_summary") or {}
+            b2 = info.get("branch2_summary") or {}
+
             p_dim = 6 if enforce_symmetry else 8
             self.logger.info(
                 "\n"
@@ -859,7 +905,7 @@ class MUFITPipeline:
                 f"    p = {np.array2string(p_opt, precision=3, suppress_small=True)}\n"
                 f"  Residuals:\n"
                 f"    cost        = {info.get('global_cost', np.nan):.3e}\n"
-                f"    ||res||     = {info.get('residual_global_norm', np.nan):.3e}\n"
+                f"    ||res||     = {info.get('residual_norm', np.nan):.3e}\n"
                 f"  Conditioning:\n"
                 f"    cond(M)     = {info.get('cond_M', np.nan):.2e}\n"
                 f"    cond(M_s)   = {info.get('cond_M_scaled', np.nan):.2e}\n"
@@ -924,3 +970,28 @@ class MUFITPipeline:
         )
         return coeffs
 
+    def _linear_mu_complex(self, config, n, tau, w_big, sigma_big, s_ref):
+        """
+        Run linear μ-fit for a single branch and return complex μ.
+        """
+        A = linfit.build_A(
+            n, tau,
+            w_big, sigma_big,
+            s_ref=s_ref,
+            use_only_acoustic=True
+        )
+
+        b = linfit.build_b(
+            config, n, tau,
+            w_big, sigma_big,
+            s_ref=s_ref,
+            use_only_acoustic=True
+        )
+
+        mu_re_im = linfit.regression(
+            A, b,
+            check_condition_number=True,
+            quiet=True
+        )
+
+        return mu_re_im[0] + 1j * mu_re_im[1]

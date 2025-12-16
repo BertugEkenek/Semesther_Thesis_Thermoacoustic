@@ -4,21 +4,24 @@ class Configuration:
         self.name = config_type
         self.data_path=None
         self.lsq_method = "trf"        # or "lm", once cond_M_scaled is reasonable
-        self.mu_reg_lambda = 0.1      # regularization strength
-        self.mu_scaling_mode = "global"   # or "perR"
         self.mu_col_rel_thresh = 1e-3
         self.mu_reg_lambda = 0.05
         self.mu_cpl_logmag_min = -2.0
         self.mu_cpl_logmag_max =  0.2
         self.mu_cpl_phase_max  = np.pi
         self.mu_R_poly_degree = 1
-        self.mu_two_stage = True
         self.mu12_prior = 1.0 + 0.0j
         self.mu_cpl_logmag_min = -2.0
         self.mu_cpl_logmag_max =  0.2
-
-
-
+        self.mu_constraint_lambda = 0.0
+        self.mu_hard_constraint = False
+        self.mu_init_lambda = 0.1
+        self.mu_neg_real_lambda= 0.0
+        self.mu_target_weights = {
+        "mu11": 1.0,
+        "mu22": 1.0,
+        "mu12": 1.0
+        }
 
         if config_type == "Rijke_tube_1":
             
