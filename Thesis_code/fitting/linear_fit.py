@@ -68,6 +68,13 @@ def create_b_small(config, w, sigma, s_ref, n, tau):
 # ------------------------------------------------------------
 def create_A_column_trajectory_vectorized(n, tau, w, sigma, s_ref):
 
+
+    w = np.asarray(w).reshape(-1)
+    sigma = np.asarray(sigma).reshape(-1)
+
+    m = len(n) - 1
+    i = np.arange(m)
+
     m = len(n) - 1
     i = np.arange(m)
 
@@ -96,6 +103,9 @@ def create_A_column_trajectory_vectorized(n, tau, w, sigma, s_ref):
 # Vectorized b for one trajectory
 # ------------------------------------------------------------
 def create_b_column_trajectory_vectorized(config, n, tau, w, sigma, s_ref):
+    w = np.asarray(w).reshape(-1)
+    sigma = np.asarray(sigma).reshape(-1)
+    n = np.asarray(n).reshape(-1)
 
     m = len(n) - 1
     i = np.arange(m)

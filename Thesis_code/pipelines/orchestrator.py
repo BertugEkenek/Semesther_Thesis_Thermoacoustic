@@ -5,11 +5,19 @@ import numpy as np
 
 from utils import logger
 from pipelines.prep_work import initialize_plot
-from pipelines.simulation import compute_reference_solutions
-from pipelines.io_pipeline import save_reference_and_noisy_solutions
+
 from pipelines.plotting_pipeline import (
     plot_eigenvalue_trajectories,
     overlay_data_if_requested,
+    plot_mu_global_diagnostics,
+)
+
+from pipelines.simulation import (
+    compute_reference_solutions_two_branches,
+)
+
+from pipelines.io_pipeline import (
+    save_reference_and_noisy_solutions_two_branches,
 )
 
 
@@ -51,23 +59,38 @@ class SolveEigenWorkflow:
             self.logger.info("No correction: using μ = 1.0")
             return mu_array, R, EV0_flat
 
-        # ---------------------------------------
-        # With correction
-        # ---------------------------------------
         if not use_saved_mu:
             if mu_order == "First":
-                mu_array, R, EV0_flat = self.mu_pipeline.find_mu_fit(
+                lin_results = self.mu_pipeline.find_mu_fit_linear_selected_branches(
                     self.config, tau
                 )
-            elif mu_order == "Second":
-                mu_array, R, EV0_flat = (
-                    self.mu_pipeline.find_mu_fit_second_order(
-                        self.config,
-                        tau,
-                        order,
-                        use_only_acoustic,
-                        enforce_symmetry,
+
+                if len(lin_results) == 1:
+                    branch_id = next(iter(lin_results.keys()))
+                    res = lin_results[branch_id]
+                    mu_array = res["mu"]
+                    R = res["R"]
+                    EV0_flat = res["EV0"]
+
+                    self.logger.info(
+                        f"Linear μ-fit completed for branch {branch_id} only."
                     )
+                else:
+                    mu_array = lin_results
+                    R = next(iter(lin_results.values()))["R"]
+                    EV0_flat = None
+
+                    self.logger.info(
+                        f"Linear μ-fit completed for branches {list(lin_results.keys())}."
+                    )
+
+            elif mu_order == "Second":
+                mu_array, R, EV0_flat = self.mu_pipeline.find_mu_fit_second_order(
+                    self.config,
+                    tau,
+                    order,
+                    use_only_acoustic,
+                    enforce_symmetry,
                 )
             else:
                 raise ValueError(f"Invalid mu_order: {mu_order}")
@@ -80,7 +103,6 @@ class SolveEigenWorkflow:
                     flame_model_approximator,
                     tau,
                 )
-
         else:
             mu_array, R, EV0_flat = self._load_mu_values(
                 flame_model_approximator,
@@ -88,7 +110,7 @@ class SolveEigenWorkflow:
             )
 
         return mu_array, R, EV0_flat
-        
+
     # ----------------------------------------------------------
     def _save_mu_values(self, mu_array, R, EV0_flat, flame_model_approximator, tau):
         save_dir = "./Results/Mu_values"
@@ -157,7 +179,7 @@ class SolveEigenWorkflow:
         mu_order: str,
         F_model,
         tau: float,
-        tolerance: int,
+        window: int,
         R_value: float,
         n_values: np.ndarray,
         Galerkin: str,
@@ -172,9 +194,27 @@ class SolveEigenWorkflow:
         use_txt_solutions: bool,
         enforce_symmetry: bool,
         nprandomsigma: float,
+        comparison: bool,
     ):
+        # ----------------------------------------------------------
+        # Determine branch_id for plotting (linear case only)
+        # ----------------------------------------------------------
+        plot_branch_id = None
+        if mu_order == "First":
+            branches = self.mu_pipeline.fit_branches
+            if len(branches) != 1:
+                raise ValueError(
+                    "Linear μ plotting requires exactly one branch. "
+                    f"fit_branches={branches} is ambiguous."
+                )
+            plot_branch_id = branches[0]
+            self.logger.info(
+                f"Linear μ plotting will use acoustic branch {plot_branch_id}."
+            )
 
-        # 1) Compute μ tensor
+        # ----------------------------------------------------------
+        # 1) Compute μ
+        # ----------------------------------------------------------
         mu_array, R, EV0_flat = self._compute_mu(
             correction,
             mu_order,
@@ -194,50 +234,60 @@ class SolveEigenWorkflow:
                 EV0_branch2_flat = np.hstack(self.mu_pipeline.EV0_branch2).ravel()
             except Exception as exc:
                 self.logger.error(f"Failed to flatten EV0_branch2: {exc}")
-                EV0_branch2_flat = None
 
-        # 2) Prepare main plot (extract μ(R = R_value) and set s1/s2)
+        # ----------------------------------------------------------
+        # 2) Prepare main eigenvalue plot
+        # ----------------------------------------------------------
         fig, ax, mu_for_R, save_path = initialize_plot(
-            tolerance,
+            window,
             R,
             R_value,
             mu_order,
             mu_array,
-            EV0_flat,          # branch 1 EV0
-            EV0_branch2_flat,  # branch 2 EV0 (or None)
+            EV0_flat,
+            EV0_branch2_flat,
             self.config,
             tau,
             filename,
             correction,
             enforce_symmetry,
+            branch_id=plot_branch_id,
         )
 
-
-        # 3) Optionally compute TXT eigenvalue reference solutions
+        # ----------------------------------------------------------
+        # 3) Optional TXT reference generation
+        # ----------------------------------------------------------
         if save_solution:
-            solutions = compute_reference_solutions(
+            sol = compute_reference_solutions_two_branches(
                 F_model,
                 n_values,
                 tau,
                 order,
                 self.config,
-                Galerkin,
-                tolerance,
+                window,
             )
 
-            solutions_array = np.array(
-                [s[1][0] for s in solutions],
-                dtype=np.complex128,
-            )
+            b1, b2 = [], []
+            for _, roots in sol:
+                if roots is None or len(roots) < 2:
+                    raise ValueError(
+                        "TXT generation failed: missing acoustic roots."
+                    )
+                b1.append(roots[0])
+                b2.append(roots[1])
 
-            save_reference_and_noisy_solutions(
-                solutions_array,
-                n_values,
+            save_reference_and_noisy_solutions_two_branches(
+                solutions_branch1=np.asarray(b1, dtype=np.complex128),
+                solutions_branch2=np.asarray(b2, dtype=np.complex128),
+                n_values=n_values,
                 noise_sigma=nprandomsigma,
                 results_dir="./Results/Solutions/",
+                prefix="Reference_case",
             )
 
+        # ----------------------------------------------------------
         # 4) Plot eigenvalue trajectories
+        # ----------------------------------------------------------
         plot_eigenvalue_trajectories(
             F_model,
             ax,
@@ -247,32 +297,55 @@ class SolveEigenWorkflow:
             mu_for_R,
             mu_order,
             Galerkin,
-            tolerance,
+            window,
             correction,
             enforce_symmetry,
             F_model.__name__,
+            comparison,
         )
 
-        # 5) Experimental overlays
+        # ----------------------------------------------------------
+        # 5) Overlays
+        # ----------------------------------------------------------
         overlay_data_if_requested(
             ax,
             self.config,
             tau,
             R_value,
-            tolerance,
+            window,
             show_tax,
             use_txt_solutions,
         )
 
-        # 6) Finalize
+        # ----------------------------------------------------------
+        # 6) Finalize main figure
+        # ----------------------------------------------------------
         ax.legend()
 
-        if save_fig:
-            fig.tight_layout()
-            fig.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.2)
+
+        # ----------------------------------------------------------
+        # 7) Global μ(R) diagnostics (NEW, centralized)
+        # ----------------------------------------------------------
+        # plot_mu_global_diagnostics(
+        #     mu_array=mu_array,
+        #     R=R,
+        #     config=self.config,
+        #     mu_pipeline=self.mu_pipeline,
+        #     enforce_symmetry=enforce_symmetry,
+        #     show_fig=show_fig,
+        #     save_fig=save_fig,
+        #     fig_dir="./Results/Figures",
+        #     title_suffix="(second-order fit)",
+        # )
+        # if save_fig:
+        #     fig.tight_layout()
+        #     fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
 
         if show_fig:
             import matplotlib.pyplot as plt
             plt.show()
+        if save_fig:
+            import matplotlib.pyplot as plt
+            plt.savefig(filename, dpi=300, bbox_inches="tight")
 
         return fig, ax

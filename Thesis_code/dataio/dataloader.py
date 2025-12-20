@@ -32,6 +32,7 @@ def load_data(
     
     return n, R, EV0, EV_trajectories, smaller_entries, max_size, min_size
 
+
 def analyze_trajectories_sizes(trajectories, show_position=False, show_max_min=False):
     """
     Analyze the sizes of trajectories and identify entries smaller than the maximum size.
@@ -161,7 +162,7 @@ def load_txt_solutions(txt_path: str):
         raise ValueError("TXT file must contain at least 2 eigenvalues.")
 
     # Matching n values
-    n_file = txt_path.replace(".txt", "_n_values.txt")
+    n_file = f"./Results/Solutions/Reference_case_n_values.txt"
     n = np.loadtxt(n_file).ravel()
     if len(n) != N:
         raise ValueError("Mismatch: n-values and EV_list sizes differ.")
@@ -181,4 +182,3 @@ def load_txt_solutions(txt_path: str):
 
     # min_size = m for consistency
     return n, R, EV0, EV_trajectories, [], m, m
-

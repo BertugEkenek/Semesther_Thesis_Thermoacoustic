@@ -2,7 +2,7 @@ import numpy as np
 from scipy.io import loadmat
 import logging
 
-def overlay_experimental_eigenvalues(ax, mat_file: str, omega_ref: float, tolerance: float = 500):
+def overlay_experimental_eigenvalues(ax, mat_file: str, omega_ref: float, window: float = 500):
     """
     Overlay experimental eigenvalues from a .mat file onto the plot.
 
@@ -10,7 +10,7 @@ def overlay_experimental_eigenvalues(ax, mat_file: str, omega_ref: float, tolera
     - ax: Matplotlib Axes object
     - mat_file: path to the .mat file containing 'EV'
     - omega_ref: reference frequency (rad/s) to center filtering
-    - tolerance: frequency bandwidth for filtering
+    - window: frequency bandwidth for filtering
     """
     try:
         mat_data = loadmat(mat_file)
@@ -28,8 +28,8 @@ def overlay_experimental_eigenvalues(ax, mat_file: str, omega_ref: float, tolera
         omega_vals = np.imag(s_vals_clean)
 
         mask = (
-            (omega_vals > omega_ref - tolerance*2) &
-            (omega_vals < omega_ref + tolerance*2) &
+            (omega_vals > omega_ref - window*2) &
+            (omega_vals < omega_ref + window*2) &
             (np.abs(sigma_vals) < 1000)            &
             (omega_vals < 4000) # Hard cutoff for better visualization
 
@@ -40,7 +40,7 @@ def overlay_experimental_eigenvalues(ax, mat_file: str, omega_ref: float, tolera
     except Exception as e:
         logging.error(f"Failed to overlay experimental eigenvalues: {e}")
 
-def overlay_reference_eigenvalues(ax, txt_file: str, omega_ref: float, tolerance: float = 500):
+def overlay_reference_eigenvalues(ax, txt_file: str, omega_ref: float, window: float = 500):
     """
     Overlay reference eigenvalues from a .txt file containing complex numbers onto the plot.
 
@@ -48,7 +48,7 @@ def overlay_reference_eigenvalues(ax, txt_file: str, omega_ref: float, tolerance
     - ax: Matplotlib Axes object
     - txt_file: path to the .txt file containing complex eigenvalues
     - omega_ref: reference frequency (rad/s) to center filtering
-    - tolerance: frequency bandwidth for filtering
+    - window: frequency bandwidth for filtering
     """
     try:
         # Load data as strings and convert to complex
@@ -60,8 +60,8 @@ def overlay_reference_eigenvalues(ax, txt_file: str, omega_ref: float, tolerance
 
         # Apply filtering
         mask = (
-            (omega_vals > omega_ref - tolerance*2) &
-            (omega_vals < omega_ref + tolerance*2) &
+            (omega_vals > omega_ref - window*2) &
+            (omega_vals < omega_ref + window*2) &
             (np.abs(sigma_vals) < 1000) &   # optional cutoff
             (omega_vals < 3000)             # optional cutoff
         )

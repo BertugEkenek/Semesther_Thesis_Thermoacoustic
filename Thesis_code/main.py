@@ -7,6 +7,7 @@ from pipelines.orchestrator import SolveEigenWorkflow
 from models.flame_models import F_pade, F_taylor
 from utils import logger
 
+
 def main():
     
     # -----------------------------------------------------------
@@ -21,11 +22,12 @@ def main():
     correction = True
     enforce_symmetry = True
     use_only_acoustic = False
+    comparison = True
 
 
     # --- Multi-branch configuration ---
-    num_acoustic_branches = 2           # Set to 2 when using two .mat files
-    fit_branches = [1, 2]                # Later: [1, 2] to use two branches
+    num_acoustic_branches = 2         # Set to 2 when using two .mat files
+    fit_branches = [1, 2]             # Later: [1, 2] to use two branches
     
     save_mu = False
     use_saved_mu = False
@@ -38,37 +40,38 @@ def main():
     R_value = -1.0
     
     # needed for save_solution
-    n_values = np.linspace(0.001, 4.0, 11)
+    n_values = np.linspace(0.001, 4.0, 101)
 
-    tolerance = 2000
+    window = 2000
     show_tax = True
     show_fig = True
     save_fig = True
 
-    nprandomsigma = 0.5
+    nprandomsigma = 0
 
 
     # -----------------------------------------------------------
     # 2. Configuration object
     # -----------------------------------------------------------
     config.lsq_method = "trf"          # or "lm"
-    config.mu_reg_lambda = 0.5
-    config.mu_init_lambda = 0.1
+    config.mu_reg_lambda = 0.2
+    config.mu_init_lambda = 0
     config.mu_constraint_lambda = 0
-    config.mu_neg_real_lambda= 0.0
-
+    config.mu_neg_real_lambda= 0
+    config.mu_use_tsvd_precond = False
     config.mu_target_weights = {
         "mu11": 1.0,
-        "mu22": 1.0,
+        "mu22": 2.0,
         "mu12": 0.0,
     }
     n_last = 4
     number_of_n = 101
+    config.mu_bake_rank_one = True
 
-    config.mu_hard_constraint = True
+    config.mu_hard_constraint = False
     config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
     #config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}.mat"
-    config.txt_solution_path = "./Results/Solutions/Reference_case.txt"
+    config.txt_solution_path = "./Results/Solutions/Reference_case"
     branch2_data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
     #branch2_data_path = None          # Path to second branch .mat (when num_acoustic_branches == 2)
 
@@ -111,8 +114,8 @@ def main():
     workflow = SolveEigenWorkflow(config, mu_pipeline, logger)
 
     filename = (
-        f"eigenvalues_of_{config.name}_"
-        f"{flame_model_choice}_order_{order}_tau_{tau}_R_{R_value}.pdf"
+        f"./Results/Plots/{config.name}/{int(tau*1000)}ms/eigenvalues_of_{config.name}_{Galerkin}_order_"
+        f"{flame_model_choice}_order_{order}_tau_{int(tau*1000)}ms_R_{int(R_value*100)}.pdf"
     )
 
     workflow.run(
@@ -121,7 +124,7 @@ def main():
         mu_order=mu_order,
         F_model=F_model,                  
         tau=tau,
-        tolerance=tolerance,
+        window=window,
         R_value=R_value,
         n_values=n_values,
         Galerkin=Galerkin,
@@ -136,7 +139,9 @@ def main():
         use_txt_solutions=use_txt_solutions,
         enforce_symmetry=enforce_symmetry,
         nprandomsigma=nprandomsigma,
+        comparison=comparison
     )
+
 
 
 if __name__ == "__main__":

@@ -1,18 +1,15 @@
 # pipelines/prep_work.py
 
 import os
-from utils import logger
 import numpy as np
 import matplotlib.pyplot as plt
+from utils import logger
 
 # --------------------------------------------------------------
 # Plot initialization
 # --------------------------------------------------------------
-# --------------------------------------------------------------
-# Plot initialization
-# --------------------------------------------------------------
 def initialize_plot(
-    tolerance: int,
+    window: int,
     R: np.ndarray,
     R_value: float,
     mu_order: str,
@@ -24,54 +21,77 @@ def initialize_plot(
     filename: str,
     correction: bool,
     enforce_symmetry: bool,
+    branch_id: int | None = None,
 ):
     """
-    Initialize plotting and configure base acoustic modes for the solver.
+    Initialize plotting and configure base acoustic modes.
 
-    Behavior:
-      - Mode 1 (s_1) always comes from branch-1 EV0 at the selected R.
-      - Mode 2 (s_2) comes from branch-2 EV0 if available; otherwise fallback
-        to config.w_R_table[R] and finally to config.w[1].
+    Linear case:
+      - branch_id MUST be provided (1 or 2)
 
-      - μ is taken from mu_array at the closest R index.
-      - Plot styling (axis labels, title, grid, save path) preserved.
+    Second-order case:
+      - branch_id is ignored
+      - μ layout depends on bake/symmetry
     """
 
     logger.info(
         f"Initializing plot for R={R_value}, mu_order={mu_order}, "
-        f"correction={correction}"
+        f"correction={correction}, branch_id={branch_id}"
     )
 
-    # float-safe index for the requested R_value
+    # -------------------------------
+    # Locate R index
+    # -------------------------------
     index = int(np.argmin(np.abs(R - R_value)))
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    ax._plot_branch_id = branch_id
 
-    # -------------------------------
-    # Set base acoustic modes (s1, s2)
-    # -------------------------------
-    s_1 = EV0_branch1[index]
-    config.w[0] = s_1
-
-    # Mode 2: use branch-2 EV0 if provided, else fallback to table / previous
-    if EV0_branch2 is not None:
-        s_2 = EV0_branch2[index]
-    else:
-        try:
-            s_2 = config.w_R_table[float(R_value)]
-        except Exception:
-            s_2 = config.w[1]
-            logger.debug(
-                f"[initialize_plot] Using config.w[1] as s_2 fallback at R={R_value}."
+    # ==========================================================
+    # Base acoustic modes
+    # ==========================================================
+    if mu_order == "First":
+        if branch_id not in (1, 2):
+            raise ValueError(
+                "initialize_plot: branch_id must be 1 or 2 "
+                "for linear μ plotting."
             )
 
-    config.w[1] = s_2
+        if branch_id == 1:
+            s_ref = EV0_branch1[index]
+        else:
+            if EV0_branch2 is None:
+                raise ValueError("Branch-2 EV0 not available.")
+            s_ref = EV0_branch2[index]
 
-    logger.info(f"[initialize_plot] s_1 = {s_1}, s_2 = {s_2}")
+        config.w[0] = s_ref
 
-    # -------------------------------
-    # Correction / μ usage
-    # -------------------------------
+        logger.info(
+            f"[initialize_plot | linear] Using branch {branch_id} "
+            f"reference mode s = {s_ref}"
+        )
+
+    else:
+        # -------------------------------
+        # Second order → two branches
+        # -------------------------------
+        s1 = EV0_branch1[index]
+        config.w[0] = s1
+
+        if EV0_branch2 is not None:
+            s2 = EV0_branch2[index]
+        else:
+            s2 = config.w[1]
+
+        config.w[1] = s2
+
+        logger.info(
+            f"[initialize_plot | second-order] s1 = {s1}, s2 = {s2}"
+        )
+
+    # ==========================================================
+    # μ selection and reporting
+    # ==========================================================
     if correction:
         ax.axhline(0, color="gray", linestyle="--")
 
@@ -80,31 +100,41 @@ def initialize_plot(
             logger.info(f"[initialize_plot] Using first-order μ = {mu}")
 
             ax.axvline(
-                config.w[0].imag,
+                s_ref.imag,
                 color="black",
                 linestyle="-",
                 linewidth=1,
-                label="ω₁",
+                label=f"ω (branch {branch_id})",
             )
 
         elif mu_order == "Second":
-            mu = mu_array[index]
+            mu = np.asarray(mu_array[index], dtype=float)
+            mu_dim = mu.size
 
-            if enforce_symmetry:
-                logger.info(
-                    "Using symmetric second-order μ values:\n"
-                    f"  μ11 = {mu[0]:.4f} + i {mu[1]:.4f}\n"
-                    f"  μ22 = {mu[2]:.4f} + i {mu[3]:.4f}\n"
-                    f"  μ12 = μ21 = {mu[4]:.4f} + i {mu[5]:.4f}"
-                )
+            mur11, mui11 = mu[0], mu[1]
+            mur22, mui22 = mu[2], mu[3]
+
+            mu11 = mur11 + 1j * mui11
+            mu22 = mur22 + 1j * mui22
+
+            text = (
+                "Using second-order μ values:\n"
+                f"  μ11 = {mur11:.4f} + i {mui11:.4f}\n"
+                f"  μ22 = {mur22:.4f} + i {mui22:.4f}\n"
+            )
+
+            if mu_dim >= 6:
+                mur12, mui12 = mu[4], mu[5]
+                text += f"  μ12 = μ21 = {mur12:.4f} + i {mui12:.4f}"
             else:
-                logger.info(
-                    "Using second-order μ values:\n"
-                    f"  μ11 = {mu[0]:.4f} + i {mu[1]:.4f}\n"
-                    f"  μ22 = {mu[2]:.4f} + i {mu[3]:.4f}\n"
-                    f"  μ12 = {mu[4]:.4f} + i {mu[5]:.4f}\n"
-                    f"  μ21 = {mu[6]:.4f} + i {mu[7]:.4f}"
+                # baked rank-one → reconstruct
+                mu12 = np.sqrt(mu11 * mu22)
+                text += (
+                    f"  μ12 = μ21 = {mu12.real:.4f} "
+                    f"+ i {mu12.imag:.4f} (baked)"
                 )
+
+            logger.info(text)
 
             ax.axvline(
                 config.w[0].imag,
@@ -126,19 +156,20 @@ def initialize_plot(
             color="black",
             linestyle="-",
             linewidth=1,
-            label="ω₁",
+            label="ω",
         )
 
-    # Labels and title (preserved)
+    # ==========================================================
+    # Labels, title, save path
+    # ==========================================================
     ax.set_xlabel("Frequency (rad/s)")
     ax.set_ylabel("Growth rate (rad/s)")
     ax.set_title(
-        f"Eigenvalues near ω₁ with n ∈ [0.001,4], τ={tau:.5f}s, R={R_value}"
+        f"Eigenvalues near ω with n ∈ [0.001,4], τ={tau:.5f}s, R={R_value}"
     )
     ax.grid(True)
     plt.tight_layout()
 
-    # Save location (preserved)
     save_dir = f"./Results/Plots/{config.name}/{int(tau * 1000)}ms/"
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, filename)
@@ -147,14 +178,9 @@ def initialize_plot(
 
 
 # --------------------------------------------------------------
-# EV trajectory conversion
+# EV trajectory conversion (unchanged)
 # --------------------------------------------------------------
 def prepare_mu(EV_trajectories: np.ndarray, min_size: int):
-    """
-    Convert EV_trajectories [R, τ, n, trajectories] from object-type entries
-    to a numeric complex array safely.
-    """
-
     shape = EV_trajectories.shape
     result = np.zeros(shape, dtype=np.complex128)
 
@@ -164,19 +190,16 @@ def prepare_mu(EV_trajectories: np.ndarray, min_size: int):
         idx = it.multi_index
         val = EV_trajectories[idx]
 
-        # Case 1: scalar
         if np.isscalar(val):
             x[...] = complex(val)
             continue
 
         arr = np.asarray(val)
 
-        # Case 2: 0D numpy scalar
         if arr.ndim == 0:
             x[...] = complex(arr)
             continue
 
-        # Case 3: array → take first eigenvalue
         x[...] = complex(arr.flatten()[0])
 
     return result

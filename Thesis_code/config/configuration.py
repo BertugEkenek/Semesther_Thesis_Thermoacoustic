@@ -1,10 +1,11 @@
 import numpy as np
+import copy
 class Configuration:
     def __init__(self, config_type):
         self.name = config_type
         self.data_path=None
         self.lsq_method = "trf"        # or "lm", once cond_M_scaled is reasonable
-        self.mu_col_rel_thresh = 1e-3
+        self.mu_col_rel_thresh = 1e-12
         self.mu_reg_lambda = 0.05
         self.mu_cpl_logmag_min = -2.0
         self.mu_cpl_logmag_max =  0.2
@@ -22,6 +23,11 @@ class Configuration:
         "mu22": 1.0,
         "mu12": 1.0
         }
+        self.mu_use_tsvd_precond = True
+        self.mu_svd_rel_thresh = 1e-10  # you already conceptually use this
+        self.mu_bake_rank_one = False
+
+
 
         if config_type == "Rijke_tube_1":
             
@@ -70,7 +76,7 @@ class Configuration:
 
             self.Z = -1/0.861*1j
 
-            self.nu = [1.582, 0.067, 0.326,0.326] # nu11, nu22, nu12, nu21 
+            self.nu = [1.582, 0.067, 0.326, 0.326] # nu11, nu22, nu12, nu21 
 
             self.alpha = [1.0 / self.K, 5.6 / self.K] # alpha1, alpha2
 
@@ -102,3 +108,42 @@ class Configuration:
             self.alpha = [0.28 / self.K, 0.0014 / self.K] # alpha1, alpha2
 
             self.Lambda = [-1.0, 1.0] # Lambda1, Lambda2
+
+    
+    def get_branch_config(self, branch_id: int):
+        """
+        Return a shallow-copied config with branch-specific diagonal parameters.
+
+        branch_id:
+            1 → acoustic branch 1  (mu11, nu11, alpha1)
+            2 → acoustic branch 2  (mu22, nu22, alpha2)
+        """
+        if branch_id not in (1, 2):
+            raise ValueError(f"branch_id must be 1 or 2, got {branch_id}")
+
+        cfg = copy.copy(self)
+
+        # Convert to 0-based branch index
+        b = branch_id - 1
+
+        # -----------------------------
+        # Alpha: [alpha1, alpha2]
+        # -----------------------------
+        alpha_b = float(self.alpha[b])
+        Lambda_b =float(self.Lambda[b])
+
+        # -----------------------------
+        # Nu: [nu11, nu22, nu12, nu21]
+        # Use diagonal only for linear fit
+        # -----------------------------
+        if b == 0:
+            nu_b = float(self.nu[0])   # nu11
+        else:
+            nu_b = float(self.nu[1])   # nu22
+
+        # Preserve expected shape for linear_fit.py
+        cfg.alpha = np.array([alpha_b], dtype=float)
+        cfg.nu    = np.array([nu_b], dtype=float)
+        cfg.Lambda = np.array([Lambda_b], dtype=float)
+
+        return cfg
