@@ -26,12 +26,13 @@ def overlay_experimental_eigenvalues(ax, mat_file: str, omega_ref: float, window
 
         sigma_vals = np.real(s_vals_clean)
         omega_vals = np.imag(s_vals_clean)
-
+        window_sigma = 550
+        window_omega = 4000
         mask = (
             (omega_vals > omega_ref - window*2) &
             (omega_vals < omega_ref + window*2) &
-            (np.abs(sigma_vals) < 1000)            &
-            (omega_vals < 4000) # Hard cutoff for better visualization
+            (np.abs(sigma_vals) < window_sigma)            &
+            (omega_vals < window_omega) # Hard cutoff for better visualization
 
         )
 
@@ -59,14 +60,16 @@ def overlay_reference_eigenvalues(ax, txt_file: str, omega_ref: float, window: f
         omega_vals = np.imag(complex_vals)
 
         # Apply filtering
+        window_sigma = 550
+        window_omega = 3000
         mask = (
             (omega_vals > omega_ref - window*2) &
             (omega_vals < omega_ref + window*2) &
-            (np.abs(sigma_vals) < 1000) &   # optional cutoff
-            (omega_vals < 3000)             # optional cutoff
+            (np.abs(sigma_vals) < window_sigma) &   # optional cutoff
+            (omega_vals < window_omega)             # optional cutoff
         )
 
-        ax.scatter(omega_vals[mask], sigma_vals[mask], color='green', marker='+', label='Reference Data')
+        ax.scatter(omega_vals[mask], sigma_vals[mask], s=50 ,color='black', marker='2', label='Reference Data')
 
     except Exception as e:
         logging.error(f"Failed to overlay reference eigenvalues: {e}")

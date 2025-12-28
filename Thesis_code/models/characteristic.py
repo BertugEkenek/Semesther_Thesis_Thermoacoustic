@@ -91,7 +91,6 @@ def characteristic_poly_model3_2mode(
     alpha = config.alpha
     Lambda = config.Lambda
 
-    # NEW: robust parsing (supports scalar, len=4 baked, len=6 symmetric, len=8 full)
     mu11, mu22, mu12, mu21 = _parse_mu_second_order(mu, enforce_symmetry=enforce_symmetry)
 
     if F.__name__ == 'F_pade':
@@ -120,7 +119,6 @@ def _is_scalar_mu(mu) -> bool:
     return np.isscalar(mu) or isinstance(mu, (complex, float, int, np.number))
 
 def _mu_to_complex_scalar(x) -> complex:
-    # robustly squeeze 0d/1-elem arrays to python complex
     return complex(np.asarray(x).squeeze())
 
 def _parse_mu_second_order(mu, enforce_symmetry: bool):

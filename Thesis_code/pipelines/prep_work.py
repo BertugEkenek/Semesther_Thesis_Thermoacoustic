@@ -143,6 +143,13 @@ def initialize_plot(
                 linewidth=1,
                 label="ω₁",
             )
+            ax.axvline(
+                config.w[1].imag,
+                color="black",
+                linestyle="-",
+                linewidth=1,
+                label="ω2",
+            )
 
         else:
             raise ValueError(f"Invalid mu_order '{mu_order}'")
@@ -159,7 +166,7 @@ def initialize_plot(
             label="ω",
         )
 
-    # ==========================================================
+   # ==========================================================
     # Labels, title, save path
     # ==========================================================
     ax.set_xlabel("Frequency (rad/s)")
@@ -170,12 +177,18 @@ def initialize_plot(
     ax.grid(True)
     plt.tight_layout()
 
-    save_dir = f"./Results/Plots/{config.name}/{int(tau * 1000)}ms/"
+    # ---- SAVE PATH (SINGLE SOURCE OF TRUTH) ----
+    save_dir = os.path.join(
+        ".", "Results", "Plots", config.name, f"{int(tau * 1000)}ms"
+    )
     os.makedirs(save_dir, exist_ok=True)
+
+    # filename MUST be a basename (enforced defensively)
+    filename = os.path.basename(filename)
+
     save_path = os.path.join(save_dir, filename)
 
     return fig, ax, mu, save_path
-
 
 # --------------------------------------------------------------
 # EV trajectory conversion (unchanged)

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
-from solver.solver import solve_roots  # updated import
+from solver.solver import solve_roots
 
 
 def plot_roots_over_n(
@@ -57,11 +57,11 @@ def plot_roots_over_n(
             for r in roots_set
             if (
                 abs (r.imag - w1) < window
-                #and abs (r.imag -w2) < window
+                and abs (r.imag - w2) < window
                 and r.imag > 0
-                and r.imag < 3000  # hard cutoff for better visualization
+                and r.imag < 4000  # hard cutoff for better visualization
             )
-            and abs(r.real) < 1000
+            and abs(r.real) < 550
         ]
         if omega_sigma:
             omega, sigma = zip(*omega_sigma)
@@ -406,7 +406,5 @@ def plot_mu_nu_complex_plane(mu_array, R, nu, enforce_symmetry=True, title_suffi
     cbar.set_label("R")
 
     fig.suptitle(f"Effective coupling (μ·ν) in complex plane {title_suffix}", fontsize=14)
-
-    # NOTE: do NOT call plt.show() here if you are centralizing show() in orchestrator
     return fig, axes
 

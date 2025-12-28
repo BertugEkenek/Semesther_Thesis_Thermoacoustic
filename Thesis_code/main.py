@@ -13,23 +13,23 @@ def main():
     # -----------------------------------------------------------
     # 1. User-configurable parameters
     # -----------------------------------------------------------
-    config_name = "Rijke_tube_1"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
+    config_name = "Rijke_tube_2"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
     flame_model_choice = "Padé"             # "Padé" or "Taylor"
     mu_order = "Second"                     # "First" or "Second"
     Galerkin = "Second"                     # "First" or "Second"
+
 
     correction = True
     enforce_symmetry = True
     use_only_acoustic = False
     comparison = True
 
-
     # --- Multi-branch configuration ---
-    num_acoustic_branches = 2         # Set to 2 when using two .mat files
+    num_acoustic_branches = 2        # Set to 2 when using two .mat files
     fit_branches = [1, 2]             # Later: [1, 2] to use two branches
     
-    save_mu = False
+    save_mu = True
     use_saved_mu = False
 
     save_solution = False
@@ -37,41 +37,35 @@ def main():
 
     tau = 0.004
     order = 12
-    R_value = -1.0
-    
-    # needed for save_solution
-    n_values = np.linspace(0.001, 4.0, 101)
-
-    window = 2000
-    show_tax = True
-    show_fig = True
-    save_fig = True
-
-    nprandomsigma = 0
-
+    R_value = -0.7
 
     # -----------------------------------------------------------
     # 2. Configuration object
     # -----------------------------------------------------------
     config.lsq_method = "trf"          # or "lm"
-    config.mu_reg_lambda = 0.2
+    config.mu_modelIII_lambda = 0
     config.mu_init_lambda = 0
-    config.mu_constraint_lambda = 0
-    config.mu_neg_real_lambda= 0
-    config.mu_use_tsvd_precond = False
-    config.mu_target_weights = {
-        "mu11": 1.0,
-        "mu22": 2.0,
-        "mu12": 0.0,
-    }
-    n_last = 4
-    number_of_n = 101
-    config.mu_bake_rank_one = True
+    config.mu_one_target_lambda = 0
+    config.mu_continuation_lambda = 0
+    
+    # needed for save_solution
+    n_values = np.linspace(0.001, 4.0, 11)
 
+    window = 2500
+    show_tax = True
+    show_fig = True
+    save_fig = True
+
+    nprandomsigma = 0.7
+
+    n_last = 4
+    number_of_n = 11
+    config.mu_bake_rank_one = True
     config.mu_hard_constraint = False
+
     config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
     #config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}.mat"
-    config.txt_solution_path = "./Results/Solutions/Reference_case"
+    config.txt_solution_path = "./Results/Solutions/Case_with_noise"
     branch2_data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
     #branch2_data_path = None          # Path to second branch .mat (when num_acoustic_branches == 2)
 
@@ -141,8 +135,5 @@ def main():
         nprandomsigma=nprandomsigma,
         comparison=comparison
     )
-
-
-
 if __name__ == "__main__":
     main()

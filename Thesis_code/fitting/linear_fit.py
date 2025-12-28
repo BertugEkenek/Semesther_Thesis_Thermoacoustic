@@ -198,9 +198,9 @@ def regression(A, b, check_condition_number=True, quiet=True, rcond=None):
     A = np.asarray(A, float)
     b = np.asarray(b, float)
 
-    if check_condition_number and not quiet:
-        logger.info(f"cond(A) = {np.linalg.cond(A):.2e}")
-        logger.info(f"cond(b) = {np.linalg.cond(b.reshape(-1,1)):.2e}")
+    # if check_condition_number and not quiet:
+        # logger.info(f"cond(A) = {np.linalg.cond(A):.2e}")
+        # # logger.info(f"cond(b) = {np.linalg.cond(b.reshape(-1,1)):.2e}")
 
     mu, _, rank, _ = np.linalg.lstsq(A, b, rcond=rcond)
 

@@ -4,30 +4,30 @@ class Configuration:
     def __init__(self, config_type):
         self.name = config_type
         self.data_path=None
-        self.lsq_method = "trf"        # or "lm", once cond_M_scaled is reasonable
-        self.mu_col_rel_thresh = 1e-12
-        self.mu_reg_lambda = 0.05
+        self.lsq_method = "trf"        # or "lm"
+
+        
+        self.mu_modelIII_lambda = 0.05
+        self.mu_one_target_lambda = 0.1
+        self.mu_init_lambda = 0.1
+
+        self.mu_logmag_min = -3.0
+        self.mu_logmag_max =  0.5
+        self.mu_phase_max = np.pi
+
         self.mu_cpl_logmag_min = -2.0
         self.mu_cpl_logmag_max =  0.2
         self.mu_cpl_phase_max  = np.pi
-        self.mu_R_poly_degree = 1
         self.mu12_prior = 1.0 + 0.0j
-        self.mu_cpl_logmag_min = -2.0
-        self.mu_cpl_logmag_max =  0.2
-        self.mu_constraint_lambda = 0.0
+        
+        self.mu_continuation_lambda = 0.0
+
         self.mu_hard_constraint = False
-        self.mu_init_lambda = 0.1
-        self.mu_neg_real_lambda= 0.0
-        self.mu_target_weights = {
-        "mu11": 1.0,
-        "mu22": 1.0,
-        "mu12": 1.0
-        }
-        self.mu_use_tsvd_precond = True
-        self.mu_svd_rel_thresh = 1e-10  # you already conceptually use this
+        
+        self.mu_col_rel_thresh = 1e-12
+        self.mu_svd_rel_thresh = 1e-10 
         self.mu_bake_rank_one = False
-
-
+        
 
         if config_type == "Rijke_tube_1":
             

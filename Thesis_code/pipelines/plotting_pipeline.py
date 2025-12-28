@@ -65,7 +65,6 @@ def plot_eigenvalue_trajectories(
             "for linear characteristic evaluation."
         )
     else:
-        # second-order μ → branch handled internally
         branch_id = None
 
     # ----------------------------------------------------------
@@ -209,13 +208,13 @@ def overlay_data_if_requested(
     if use_txt_solutions and hasattr(config, "txt_solution_path"):
         overlay_reference_eigenvalues(
             ax,
-            "./Results/Solutions/Reference_case_branch1.txt",
+            "./Results/Solutions/Case_with_noise_branch1.txt",
             omega_ref=config.w[0].imag,
             window=window / 2,
         )
         overlay_reference_eigenvalues(
             ax,
-            "./Results/Solutions/Reference_case_branch2.txt",
+            "./Results/Solutions/Case_with_noise_branch2.txt",
             omega_ref=config.w[1].imag,
             window=window / 2,
         )
@@ -267,7 +266,7 @@ def plot_mu_global_diagnostics(
     plot_mu_nu_components(R, mu_array, config.nu, ax=ax1)
     fig1.tight_layout()
     if save_fig:
-        fig1.savefig(os.path.join(fig_dir, "mu_nu_components.png"), dpi=300)
+        fig1.savefig(os.path.join(fig_dir, "mu_nu_components.png"), dpi=600)
 
     # --------------------------------------------------
     # μ·ν magnitude
@@ -276,7 +275,7 @@ def plot_mu_global_diagnostics(
     plot_mu_nu_magnitude(R, mu_array, config.nu, ax=ax2)
     fig2.tight_layout()
     if save_fig:
-        fig2.savefig(os.path.join(fig_dir, "mu_nu_magnitude.png"), dpi=300)
+        fig2.savefig(os.path.join(fig_dir, "mu_nu_magnitude.png"), dpi=600)
     
     # --------------------------------------------------
     # μ·ν complex plane (effective coupling)
@@ -289,7 +288,7 @@ def plot_mu_global_diagnostics(
         title_suffix=title_suffix,
     )
     if save_fig:
-        fig0.savefig(os.path.join(fig_dir, "mu_nu_complex_plane.png"), dpi=300, bbox_inches="tight")
+        fig0.savefig(os.path.join(fig_dir, "mu_nu_complex_plane.png"), dpi=600, bbox_inches="tight")
 
 
     # --------------------------------------------------
@@ -302,7 +301,7 @@ def plot_mu_global_diagnostics(
             plot_condition_numbers(R, cond_nums, ax=ax3)
             fig3.tight_layout()
             if save_fig:
-                fig3.savefig(os.path.join(fig_dir, "mu_condition_numbers.png"), dpi=300)
+                fig3.savefig(os.path.join(fig_dir, "mu_condition_numbers.png"), dpi=600)
 
 
         ranks = getattr(mu_pipeline, "mu_ranks", None)
@@ -311,7 +310,7 @@ def plot_mu_global_diagnostics(
             plot_ranks(R, ranks, ax=ax4)
             fig4.tight_layout()
             if save_fig:
-                fig4.savefig(os.path.join(fig_dir, "mu_ranks.png"), dpi=300)
+                fig4.savefig(os.path.join(fig_dir, "mu_ranks.png"), dpi=600)
 
 
         residuals = getattr(mu_pipeline, "mu_residuals", None)
@@ -320,5 +319,5 @@ def plot_mu_global_diagnostics(
             plot_residuals(R, residuals, ax=ax5)
             fig5.tight_layout()
             if save_fig:
-                fig5.savefig(os.path.join(fig_dir, "mu_residuals.png"), dpi=300)
+                fig5.savefig(os.path.join(fig_dir, "mu_residuals.png"), dpi=600)
 

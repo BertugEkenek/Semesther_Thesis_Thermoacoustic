@@ -294,7 +294,7 @@ class MUFITPipeline:
         EV0_flat_2 = self._ev0_flat(2)  # may be None
 
         p_list = []
-
+        prev_p = None
         for i in range(num_R):
             # Base reference eigenvalues for this R
             s_1 = EV0_flat_1[i]
@@ -331,16 +331,17 @@ class MUFITPipeline:
                 try:
                     mu22_lin = self._linear_mu_complex(config, 2, n, tau, w_big_2, sigma_big_2, s_ref=s_2)
                     init_mu22 = self._validate_linear_mu_init(mu22_lin, 2, float(self.R[i]))
+                    
                 except Exception:
                     init_mu22 = None
-
+                
                 extra.append(dict(
                     tag="branch2",
                     w_big=w_big_2,
                     sigma_big=sigma_big_2,
                     s_ref=s_2,
                 ))
-
+            
             # Solve per-R global nonlinear LSQ
             p_opt, info = sofit.solve_mu_per_R(
                 config=config,
@@ -357,41 +358,26 @@ class MUFITPipeline:
                 extra_branches=extra if extra else None,
                 init_mu11=init_mu11,
                 init_mu22=init_mu22,
+                prev_p_opt=prev_p,    
             )
 
+            prev_p = p_opt            
             p_list.append(p_opt)
 
             self.logger.info(
                 f"[Second-order μ] R[{i}]={self.R[i]:.2e} | "
                 f"cost={info.get('global_cost', np.nan):.3e} | "
-                 f"cond(A)={info['cond_A_phys']:.2e} | "
+                f"phys_cost={info.get('phys_cost', np.nan):.3e} | "
+                f"phys_rms={info.get('phys_rms', np.nan):.3e} | "
+                f"cond(A)={info.get('cond_A_phys', np.nan):.2e} | "
                 f"rank={info.get('rank_A_phys', None)}"
             )
+
 
         mu_array = np.asarray(p_list, dtype=float)
         self.mu_cond_numbers = np.asarray(cond_list)
         self.mu_ranks = np.asarray(rank_list)
 
-        # Optional: polynomial μ(R) model
-        degree = getattr(self.config, "mu_R_poly_degree", 1)
-        self.mu_R_coeffs = self.fit_mu_R_model(mu_array, degree=degree)
 
         return mu_array, self.R, EV0_flat_1
 
-    def fit_mu_R_model(self, mu_array: np.ndarray, degree: int = 1):
-        R = np.asarray(self.R, float)
-        num_R, p_dim = mu_array.shape
-
-        coeffs = np.zeros((p_dim, degree + 1), dtype=float)
-
-        for k in range(p_dim):
-            y = mu_array[:, k]
-            mask = np.isfinite(y)
-            if np.count_nonzero(mask) <= degree:
-                coeffs[k, :] = 0.0
-                coeffs[k, -1] = np.nanmean(y[mask]) if np.any(mask) else 0.0
-            else:
-                coeffs[k, :] = np.polyfit(R[mask], y[mask], degree)
-
-        self.logger.info(f"Fitted μ(R) polynomial model of degree {degree} for {p_dim} parameters.")
-        return coeffs

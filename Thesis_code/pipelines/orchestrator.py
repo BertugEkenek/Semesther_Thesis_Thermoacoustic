@@ -270,9 +270,7 @@ class SolveEigenWorkflow:
             b1, b2 = [], []
             for _, roots in sol:
                 if roots is None or len(roots) < 2:
-                    raise ValueError(
-                        "TXT generation failed: missing acoustic roots."
-                    )
+                    raise ValueError("TXT generation failed: missing acoustic roots.")
                 b1.append(roots[0])
                 b2.append(roots[1])
 
@@ -321,10 +319,22 @@ class SolveEigenWorkflow:
         # 6) Finalize main figure
         # ----------------------------------------------------------
         ax.legend()
+        # ----------------------------------------------------------
+        # 7) SAVE MAIN FIGURE *BEFORE* ANY OTHER PLOTS
+        # ----------------------------------------------------------
+        if save_fig:
+            # save_path is already a FULL file path → do NOT rebuild it
+            fig.savefig(
+                save_path,
+                dpi=600,
+                bbox_inches="tight",
+                pad_inches=0.2,
+            )
 
+            self.logger.info(f"Main eigenvalue figure saved to: {save_path}")
 
         # ----------------------------------------------------------
-        # 7) Global μ(R) diagnostics (NEW, centralized)
+        # 8) Global μ(R) diagnostics (creates its OWN figures)
         # ----------------------------------------------------------
         # plot_mu_global_diagnostics(
         #     mu_array=mu_array,
@@ -337,15 +347,10 @@ class SolveEigenWorkflow:
         #     fig_dir="./Results/Figures",
         #     title_suffix="(second-order fit)",
         # )
-        # if save_fig:
-        #     fig.tight_layout()
-        #     fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
 
+        # ----------------------------------------------------------
+        # 9) SHOW FIGURES
+        # ----------------------------------------------------------
         if show_fig:
             import matplotlib.pyplot as plt
             plt.show()
-        if save_fig:
-            import matplotlib.pyplot as plt
-            plt.savefig(filename, dpi=300, bbox_inches="tight")
-
-        return fig, ax
