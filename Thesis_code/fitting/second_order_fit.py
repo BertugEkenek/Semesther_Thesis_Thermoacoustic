@@ -393,16 +393,10 @@ def build_mu_from_p_phys_baked6(p, enforce_symmetry):
 def solve_mu_per_R(
     config,
     n,
-    tau,
-    w_big,
-    sigma_big,
-    s_1,
-    s_2,
+    data_blocks,
     use_only_acoustic,
     enforce_symmetry,
-    weights=None,
     quiet=False,
-    extra_branches=None,
     init_mu11: complex | None = None,
     init_mu22: complex | None = None,
     prev_p_opt=None,
@@ -412,6 +406,17 @@ def solve_mu_per_R(
     Returns:
       p_opt, info
     where p_opt is (6 or 8)-vector of real μ parameters.
+
+    data_blocks: list of dicts, each containing:
+      {
+        'tag': str,
+        'tau': float,
+        'w': array (m, T),
+        'sigma': array (m, T),
+        's_ref': complex,
+        's_1': complex,
+        's_2': complex
+      }
     """
 
     hard = bool(getattr(config, "mu_hard_constraint", False))
@@ -419,37 +424,6 @@ def solve_mu_per_R(
 
     if hard and bake:
         raise ValueError("mu_hard_constraint and mu_bake_rank_one cannot both be True.")
-
-    # -----------------------------
-    # normalize shapes: (m, T)
-    # -----------------------------
-    w_big = ensure_2d(w_big)
-    sigma_big = ensure_2d(sigma_big)
-
-    if use_only_acoustic:
-        w_big = w_big[:, :1]
-        sigma_big = sigma_big[:, :1]
-
-    m, T = w_big.shape
-
-    norm_extra = []
-    if extra_branches is not None:
-        for br in extra_branches:
-            w_ex = ensure_2d(br["w_big"])
-            s_ex = ensure_2d(br["sigma_big"])
-            if use_only_acoustic:
-                w_ex = w_ex[:, :1]
-                s_ex = s_ex[:, :1]
-            if w_ex.shape != (m, T) or s_ex.shape != (m, T):
-                raise ValueError(
-                    f"extra branch shape mismatch. expected {(m,T)}, got {w_ex.shape}/{s_ex.shape}"
-                )
-            norm_extra.append(dict(
-                tag=br.get("tag", "extra"),
-                w_big=w_ex,
-                sigma_big=s_ex,
-                s_ref=br["s_ref"],
-            ))
 
     # -----------------------------
     # build stacked physics system
@@ -461,13 +435,14 @@ def solve_mu_per_R(
     rel_col_thresh = float(getattr(config, "mu_col_rel_thresh", 1e-3))
     rel_svd_thresh = float(getattr(config, "mu_svd_rel_thresh", 1e-10))
 
-    def _append_block(tag, w_blk, sig_blk, s_ref_blk):
+    def _append_block(tag, w_blk, sig_blk, s_ref_blk, tau_blk, s_1_blk, s_2_blk):
+        m, T = w_blk.shape
         for j in range(T):
             w = w_blk[:, j]
             sig = sig_blk[:, j]
 
             M_all, b_all = _build_M_all_and_b_all(
-                config, tau, w, sig, s_ref_blk, s_1, s_2, n
+                config, tau_blk, w, sig, s_ref_blk, s_1_blk, s_2_blk, n
             )
             A_phys, _ = _collapse_12_to_identifiable(M_all, config)
             b_2d = b_all.reshape(-1)
@@ -491,9 +466,24 @@ def solve_mu_per_R(
                 p_dim=A_phys.shape[1],
             ))
 
-    _append_block("branch1", w_big, sigma_big, s_1)
-    for br in norm_extra:
-        _append_block(br["tag"], br["w_big"], br["sigma_big"], br["s_ref"])
+    # Process all blocks
+    for blk in data_blocks:
+        w_b = ensure_2d(blk['w'])
+        s_b = ensure_2d(blk['sigma'])
+        
+        if use_only_acoustic:
+            w_b = w_b[:, :1]
+            s_b = s_b[:, :1]
+            
+        _append_block(
+            tag=blk['tag'],
+            w_blk=w_b,
+            sig_blk=s_b,
+            s_ref_blk=blk['s_ref'],
+            tau_blk=blk['tau'],
+            s_1_blk=blk['s_1'],
+            s_2_blk=blk['s_2']
+        )
 
     A_phys = np.vstack([x[2] for x in A_blocks])
     b_2d = np.concatenate(b_blocks)
@@ -730,12 +720,12 @@ def solve_mu_per_R(
         mu12_sign=int(best_sign),
         bake_rank_one=bool(bake),
         hard_constraint=bool(hard),
-        branch1_summary=summarize("branch1"),
     )
 
-    if norm_extra:
-        for br in norm_extra:
-            info[f"{br['tag']}_summary"] = summarize(br["tag"])
+    # Summarize all blocks
+    unique_tags = sorted(list(set(b['tag'] for b in data_blocks)))
+    for tag in unique_tags:
+        info[f"{tag}_summary"] = summarize(tag)
 
     if (not quiet):
         info["block_info"] = block_info
