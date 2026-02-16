@@ -27,7 +27,7 @@ class MUFITPipeline:
     def __init__(
         self,
         config: object,
-        data_path: str,
+        data_path: str | None,
         txt_solution_path: str,
         order: int,
         use_only_acoustic: bool,
@@ -134,6 +134,9 @@ class MUFITPipeline:
         raise ValueError("TXT loader supports only 1 or 2 acoustic branches")
 
     def _load_mat(self):
+        if self.data_path is None:
+            raise ValueError("data_path is None, but _load_mat was called (merged_optimization=False).")
+
         self.logger.info(f"Loading branch-1 data from MAT: {self.data_path}")
         (self.n, self.R, self.EV0, self.EV_trajectories, _, _, self.min_size) = load_data(
             data_path=self.data_path,
@@ -277,7 +280,6 @@ class MUFITPipeline:
 
         EV0_flat = self._ev0_flat(branch_id)
         stacked = self._stacked(branch_id)
-        print(stacked)
 
         n = self.n
         num_R = stacked.shape[0]
