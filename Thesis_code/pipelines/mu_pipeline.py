@@ -303,7 +303,7 @@ class MUFITPipeline:
             self.logger.info(
                 f"[Linear μ | branch={branch_id}] R[{i}]={self.R[i]} | μ={mu} | cond(A)={np.linalg.cond(A):.2e}"
             )
-
+        logger.info(f"Branch {branch_id}: ν/α = {cfg.nu[0] / cfg.alpha[0]:.2e}")
         self.logger.info(f"First-order μ fit completed (single-branch={branch_id})")
         return mu_array, self.R, EV0_flat
 
@@ -435,8 +435,9 @@ class MUFITPipeline:
             # Optional: use linear init (branch-aware)
             init_mu11 = None
             init_mu22 = None
+
+            # --- μ11 init (branch 1) ---
             try:
-                # Need local data for initialization
                 if self.merged_optimization and tau in self.data_store:
                     d_init = self.data_store[tau]
                     st1_init = d_init['EV_trajectories_stacked']
@@ -455,6 +456,38 @@ class MUFITPipeline:
                 init_mu11 = self._validate_linear_mu_init(mu11_lin, 1, float(self.R[i]))
             except Exception:
                 init_mu11 = None
+
+
+            # --- μ22 init (branch 2) [NEW] ---
+            try:
+                # only if branch-2 data exists
+                if self.num_acoustic_branches >= 2 and (2 in self.fit_branches):
+
+                    if self.merged_optimization and tau in self.data_store:
+                        d_init = self.data_store[tau]
+                        st2_init = d_init.get('EV_trajectories_branch2_stacked')
+                        ev2_obj = d_init.get('EV0_branch2')
+                        if st2_init is None or ev2_obj is None:
+                            raise ValueError("Merged branch-2 data missing for init_mu22.")
+                        ev2_init = np.hstack(ev2_obj).ravel()
+
+                        w2_init = st2_init[i, 0, :].imag
+                        sig2_init = st2_init[i, 0, :].real
+                        s2_init = ev2_init[i]
+
+                    else:
+                        st2_init = self._stacked(2)
+                        ev2_init = self._ev0_flat(2)
+                        w2_init = st2_init[i, 0, :].imag
+                        sig2_init = st2_init[i, 0, :].real
+                        s2_init = ev2_init[i]
+
+                    mu22_lin = self._linear_mu_complex(config, 2, n, tau, w2_init, sig2_init, s_ref=s2_init)
+                    init_mu22 = self._validate_linear_mu_init(mu22_lin, 2, float(self.R[i]))
+
+            except Exception:
+                init_mu22 = None
+
 
             # ------------------------------------------------------
             # Build Data Blocks

@@ -64,8 +64,7 @@ def initialize_plot(
                 raise ValueError("Branch-2 EV0 not available.")
             s_ref = EV0_branch2[index]
 
-        config.w[0] = s_ref
-
+        config.w[branch_id - 1] = s_ref
         logger.info(
             f"[initialize_plot | linear] Using branch {branch_id} "
             f"reference mode s = {s_ref}"

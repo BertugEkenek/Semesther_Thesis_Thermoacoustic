@@ -12,11 +12,11 @@ def main():
     # -----------------------------------------------------------
     # 1. User-configurable parameters
     # -----------------------------------------------------------
-    config_name = "Rijke_tube_2"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
+    config_name = "BRS"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
     flame_model_choice = "Padé"             # "Padé" or "Taylor"
-    mu_order = "First"                     # "First" or "Second"
-    Galerkin = "First"                     # "First" or "Second"
+    mu_order = "Second"                     # "First" or "Second"
+    Galerkin = "Second"                     # "First" or "Second"
 
     correction = True
     enforce_symmetry = True
@@ -25,7 +25,7 @@ def main():
 
     # --- Multi-branch configuration ---
     num_acoustic_branches = 2       # Set to 2 when using two .mat files
-    fit_branches = [1]             # Later: [1, 2] to use two branches
+    fit_branches = [1,2]             # Later: [1, 2] to use two branches
 
     # --- Merged Optimization Config ---
     merged_optimization = False       # Set to True to enable multi-tau optimization
@@ -33,7 +33,7 @@ def main():
     
     data_paths_map = {}
 
-    save_mu = True
+    save_mu = False
     use_saved_mu = False
 
     save_solution = False
@@ -63,7 +63,7 @@ def main():
     nprandomsigma = 0.7
 
     n_last = 4
-    number_of_n = 11
+    number_of_n = 101
     config.mu_bake_rank_one = True
     config.mu_hard_constraint = False
 
@@ -76,7 +76,7 @@ def main():
 
     config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
     #config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}.mat"
-    config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
+    #config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
     config.txt_solution_path = "./Results/Solutions/Case_with_noise"
     branch2_data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
     #branch2_data_path = None          # Path to second branch .mat (when num_acoustic_branches == 2)

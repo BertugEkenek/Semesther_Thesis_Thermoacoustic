@@ -595,8 +595,8 @@ def solve_mu_per_R(
             else:
                 p_init[4:8] = 0.0
 
-    if prev_p_opt is not None:
-        p_init = None
+    # if prev_p_opt is not None:
+    #     p_init = None
 
     lam_target = float(getattr(config, "mu_modelIII_lambda", 0.0))
     lam_init   = float(getattr(config, "mu_init_lambda", 0.0))
