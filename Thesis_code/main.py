@@ -15,8 +15,8 @@ def main():
     config_name = "BRS"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
     flame_model_choice = "Padé"             # "Padé" or "Taylor"
-    mu_order = "Second"                     # "First" or "Second"
-    Galerkin = "Second"                     # "First" or "Second"
+    mu_order = "First"                     # "First" or "Second"
+    Galerkin = "First"                     # "First" or "Second"
 
     correction = True
     enforce_symmetry = True
@@ -25,7 +25,7 @@ def main():
 
     # --- Multi-branch configuration ---
     num_acoustic_branches = 2       # Set to 2 when using two .mat files
-    fit_branches = [1,2]             # Later: [1, 2] to use two branches
+    fit_branches = [2]             # Later: [1, 2] to use two branches
 
     # --- Merged Optimization Config ---
     merged_optimization = False       # Set to True to enable multi-tau optimization
@@ -55,7 +55,7 @@ def main():
     # needed for save_solution
     n_values = np.linspace(0.001, 4.0, 11)
 
-    window = 2500
+    window = 3000
     show_tax = True
     show_fig = True
     save_fig = True

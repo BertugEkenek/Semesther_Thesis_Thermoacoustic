@@ -188,10 +188,6 @@ def _build_M_all_and_b_all(config, tau, w, sigma, s_ref, s_1, s_2, n):
     M_all = np.zeros((m, 2, 12), float)
     b_all = np.zeros((m, 2), float)
 
-    # ----------------------------------------------------------------
-    # IMPORTANT: This block preserves your existing algebraic structure.
-    # ----------------------------------------------------------------
-
     # --- Re row (row 0) ---
     M_all[:, 0, 0] = C11*(Cin**2*c - Crn**2*c - Ci2*Cin*c + Cr2*Crn*c +
                          Ci2*Crn*s + Cin*Cr2*s - 2*Cin*Crn*s)
