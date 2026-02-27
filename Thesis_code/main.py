@@ -28,7 +28,8 @@ def main():
 
     # --- Merged Optimization Config ---
     merged_optimization = True       # Set to True to enable multi-tau optimization
-    tau_train_list = [0.004, 0.007]   # List of tau values to merge
+    tau_plot = 0.007
+    tau_train_list = [tau_plot]   # List of tau values to merge
     
     data_paths_map = {}
 
@@ -38,7 +39,7 @@ def main():
     save_solution = False
     use_txt_solutions = False
 
-    tau = 0.007
+    
     order = 12
     R_value = -0.8
 
@@ -73,11 +74,11 @@ def main():
             path_b2 = f"./data/Mu_training_data/{config.name}/{t_ms}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={t_ms}ms.mat"
             data_paths_map[t] = {'branch1': path_b1, 'branch2': path_b2}
 
-    config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
-    #config.data_path = f"./data/Mu_training_data/{int(tau*1000)}ms/tax_{config.name}.mat"
-    #config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"
+    config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau_plot*1000)}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau_plot*1000)}ms.mat"
+    #config.data_path = f"./data/Mu_training_data/{int(tau_plot*1000)}ms/tax_{config.name}.mat"
+    #config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau_plot*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau_plot*1000)}ms.mat"
     config.txt_solution_path = "./Results/Solutions/Case_with_noise"
-    branch2_data_path = f"./data/Mu_training_data/{config.name}/{int(tau*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
+    branch2_data_path = f"./data/Mu_training_data/{config.name}/{int(tau_plot*1000)}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau_plot*1000)}ms.mat"          # Path to second branch .mat (when num_acoustic_branches == 2)
     #branch2_data_path = None          # Path to second branch .mat (when num_acoustic_branches == 2)
 
 
@@ -119,8 +120,8 @@ def main():
     # -----------------------------------------------------------
     workflow = SolveEigenWorkflow(config, mu_pipeline, logger)
     filename = (
-        f"./Results/Plots/{config.name}/{int(tau*1000)}ms/eigenvalues_of_{config.name}_{Galerkin}_order_"
-        f"{flame_model_choice}_order_{order}_tau_{int(tau*1000)}ms_R_{int(R_value*100)}.pdf"
+        f"./Results/Plots/{config.name}/{int(tau_plot*1000)}ms/eigenvalues_of_{config.name}_{Galerkin}_order_"
+        f"{flame_model_choice}_order_{order}_tau_{int(tau_plot*1000)}ms_R_{int(R_value*100)}.pdf"
     )
 
     workflow.run(
@@ -128,7 +129,8 @@ def main():
         order=order,
         mu_order=mu_order,
         F_model=F_model,                  
-        tau=tau,
+        tau_plot=tau_plot,
+        tau_train_list=tau_train_list,
         window=window,
         R_value=R_value,
         n_values=n_values,

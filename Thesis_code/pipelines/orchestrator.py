@@ -41,7 +41,7 @@ class SolveEigenWorkflow:
         correction: bool,
         mu_order: str,
         flame_model_approximator: str,
-        tau: float,
+        tau_train_list: list[float],
         order: int,
         enforce_symmetry: bool,
         save_mu: bool,
@@ -50,7 +50,15 @@ class SolveEigenWorkflow:
         """
         Compute or load μ-array and corresponding R, EV0.
         """
+        if not tau_train_list:
+            raise ValueError("tau_train_list must be non-empty.")
 
+        if len(tau_train_list) == 1:
+            tau_tag = f"{int(tau_train_list[0] * 1000)}ms"
+        else:
+            tau_tag = "train_" + "_".join(
+                f"{int(t * 1000)}ms" for t in sorted(float(t) for t in tau_train_list)
+            )
         if not correction:
             mu_array = 1.0
             EV0_flat = np.hstack(self.mu_pipeline.EV0).ravel()
@@ -61,7 +69,7 @@ class SolveEigenWorkflow:
         if not use_saved_mu:
             if mu_order == "First":
                 lin_results = self.mu_pipeline.find_mu_fit_linear_selected_branches(
-                    self.config, tau
+                    self.config, tau_train_list
                 )
 
                 if len(lin_results) == 1:
@@ -85,10 +93,7 @@ class SolveEigenWorkflow:
 
             elif mu_order == "Second":
                 mu_array, R, EV0_flat = self.mu_pipeline.find_mu_fit_second_order(
-                    self.config,
-                    tau,
-                    order,
-                    enforce_symmetry,
+                    self.config, tau_train_list, order, enforce_symmetry
                 )
             else:
                 raise ValueError(f"Invalid mu_order: {mu_order}")
@@ -99,12 +104,12 @@ class SolveEigenWorkflow:
                     R,
                     EV0_flat,
                     flame_model_approximator,
-                    tau,
+                    tau_tag,
                 )
         else:
             mu_array, R, EV0_flat = self._load_mu_values(
                 flame_model_approximator,
-                tau,
+                tau_tag,
             )
 
         return mu_array, R, EV0_flat
@@ -176,7 +181,8 @@ class SolveEigenWorkflow:
         order: int,
         mu_order: str,
         F_model,
-        tau: float,
+        tau_plot: float,
+        tau_train_list: list[float],
         window: int,
         R_value: float,
         n_values: np.ndarray,
@@ -213,16 +219,15 @@ class SolveEigenWorkflow:
         # 1) Compute μ
         # ----------------------------------------------------------
         mu_array, R, EV0_flat = self._compute_mu(
-            correction,
-            mu_order,
-            F_model.__name__,
-            tau,
-            order,
-            enforce_symmetry,
-            save_mu,
-            use_saved_mu,
+            correction=correction,
+            mu_order=mu_order,
+            flame_model_approximator=F_model.__name__,
+            tau_train_list=tau_train_list,
+            order=order,
+            enforce_symmetry=enforce_symmetry,
+            save_mu=save_mu,
+            use_saved_mu=use_saved_mu,
         )
-
         # Flatten branch-2 EV0 if available
         EV0_branch2_flat = None
         if getattr(self.mu_pipeline, "EV0_branch2", None) is not None:
@@ -243,7 +248,7 @@ class SolveEigenWorkflow:
             EV0_flat,
             EV0_branch2_flat,
             self.config,
-            tau,
+            tau_plot,
             filename,
             correction,
             enforce_symmetry,
@@ -257,7 +262,7 @@ class SolveEigenWorkflow:
             sol = compute_reference_solutions_two_branches(
                 F_model,
                 n_values,
-                tau,
+                tau_plot,
                 order,
                 self.config,
                 window,
@@ -286,7 +291,7 @@ class SolveEigenWorkflow:
             F_model,
             ax,
             self.config,
-            tau,
+            tau_plot,
             order,
             mu_for_R,
             mu_order,
@@ -304,7 +309,7 @@ class SolveEigenWorkflow:
         overlay_data_if_requested(
             ax,
             self.config,
-            tau,
+            tau_plot,
             R_value,
             window,
             show_tax,

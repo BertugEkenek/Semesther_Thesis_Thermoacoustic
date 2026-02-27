@@ -21,7 +21,7 @@ class MUFITPipeline:
       After prepare_mu, MAT trajectories become numeric complex arrays
       with shape [num_R, τ, n]. Each entry is ONE complex eigenvalue
       (prepare_mu takes the first element if the raw entry was an array).
-      See prepare_mu implementation.  :contentReference[oaicite:4]{index=4}
+      See prepare_mu implementation.
     """
 
     def __init__(
@@ -265,103 +265,123 @@ class MUFITPipeline:
     # ==========================================================
     # linear μ-fit (single branch; legacy)
     # ==========================================================
-    def find_mu_fit(self, config, tau, branch_id: int = 1):
+    def find_mu_fit(self, config, tau_train_list: list[float], branch_id: int = 1):
         """
         First-order μ-fit (linear LSQ), SINGLE-BRANCH ONLY.
-        Uses τ-index 0, all n samples.
+
+        Trains μ(R) by stacking linear regression rows across all τ in tau_train_list.
+        For each τ, uses τ-index 0 and all n samples from that τ dataset.
         """
+        if not tau_train_list:
+            raise ValueError("tau_train_list must be non-empty.")
+
         if branch_id not in (1, 2):
             raise ValueError(f"branch_id must be 1 or 2, got {branch_id}")
 
+        # If merged, validate requested taus exist
         if self.merged_optimization:
-            return self._find_mu_fit_merged_linear(config, tau, branch_id)
+            missing = [t for t in tau_train_list if t not in self.data_store]
+            if missing:
+                raise KeyError(
+                    f"Requested tau_train_list contains taus not loaded: {missing}. "
+                    f"Loaded taus: {sorted(self.data_store.keys())}"
+                )
+        else:
+            # Non-merged: only one dataset exists; we treat tau_train_list[0] as label
+            tau_train_list = [float(tau_train_list[0])]
 
-        EV0_flat = self._ev0_flat(branch_id)
-        stacked = self._stacked(branch_id)
+        # Reference EV0 and stacked for return (deterministic anchor)
+        tau_anchor = float(min(tau_train_list))
+        if self.merged_optimization:
+            d_anchor = self.data_store[tau_anchor]
+            if branch_id == 1:
+                EV0_flat = np.hstack(d_anchor["EV0"]).ravel()
+            else:
+                EV0_flat = np.hstack(d_anchor["EV0_branch2"]).ravel()
+            # R is global; assume consistent across taus
+            R = self.R
+            num_R = len(R)
+        else:
+            EV0_flat = self._ev0_flat(branch_id)
+            R = self.R
+            num_R = len(R)
 
         n = self.n
-        num_R = stacked.shape[0]
-        mu_array = np.zeros((num_R, 2))
+        mu_array = np.zeros((num_R, 2), dtype=float)
 
         for i in range(num_R):
-            s_ref = EV0_flat[i]
+            # stack A,b rows across all taus
+            A_all = []
+            b_all = []
 
-            # core contract: stacked[i, 0, :] is length n
-            w = stacked[i, 0, :].imag
-            sigma = stacked[i, 0, :].real
-
-            A = linfit.build_A(n, tau, w, sigma, s_ref=s_ref)
-
-            cfg = config.get_branch_config(branch_id)
-            b = linfit.build_b(cfg, n, tau, w, sigma, s_ref=s_ref)
-
-            mu = linfit.regression(A, b, check_condition_number=True, quiet=False)
-            mu_array[i, :] = mu
-
-            self.logger.info(
-                f"[Linear μ | branch={branch_id}] R[{i}]={self.R[i]} | μ={mu} | cond(A)={np.linalg.cond(A):.2e}"
-            )
-        logger.info(f"Branch {branch_id}: ν/α = {cfg.nu[0] / cfg.alpha[0]:.2e}")
-        self.logger.info(f"First-order μ fit completed (single-branch={branch_id})")
-        return mu_array, self.R, EV0_flat
-
-    def _find_mu_fit_merged_linear(self, config, target_tau, branch_id):
-        """
-        Merged First-order μ-fit.
-        Optimizes one μ across ALL datasets in self.data_store.
-        Returns EV0 corresponding to 'target_tau' for plotting consistency.
-        """
-        # 1. Prepare output array
-        num_R = len(self.R)
-        mu_array = np.zeros((num_R, 2))
-
-        # 2. Iterate per R (global optimization at each R)
-        for i in range(num_R):
-            A_rows = []
-            b_rows = []
-
-            # 3. Collect data from all training taus
-            for t_val, data in self.data_store.items():
-                # Select branch data
-                if branch_id == 1:
-                    stacked = data['EV_trajectories_stacked']
-                    EV0_flat = np.hstack(data['EV0']).ravel()
+            for t in tau_train_list:
+                if self.merged_optimization:
+                    d = self.data_store[t]
+                    if branch_id == 1:
+                        stacked = d["EV_trajectories_stacked"]
+                        s_ref = np.hstack(d["EV0"]).ravel()[i]
+                    else:
+                        stacked = d["EV_trajectories_branch2_stacked"]
+                        s_ref = np.hstack(d["EV0_branch2"]).ravel()[i]
                 else:
-                    stacked = data['EV_trajectories_branch2_stacked']
-                    EV0_flat = np.hstack(data['EV0_branch2']).ravel()
+                    stacked = self._stacked(branch_id)
+                    s_ref = EV0_flat[i]
 
-                s_ref = EV0_flat[i]
+                # core contract: stacked[i, 0, :] is length n
                 w = stacked[i, 0, :].imag
                 sigma = stacked[i, 0, :].real
 
-                # Build matrices for this specific tau
-                A_i = linfit.build_A(self.n, t_val, w, sigma, s_ref=s_ref)
+                A = linfit.build_A(n, float(t), w, sigma, s_ref=s_ref)
+
                 cfg = config.get_branch_config(branch_id)
-                b_i = linfit.build_b(cfg, self.n, t_val, w, sigma, s_ref=s_ref)
+                b = linfit.build_b(cfg, n, float(t), w, sigma, s_ref=s_ref)
 
-                A_rows.append(A_i)
-                b_rows.append(b_i)
+                A_all.append(A)
+                b_all.append(b)
 
-            # 4. Stack and Solve
-            A_total = np.vstack(A_rows)
-            b_total = np.concatenate(b_rows)
-            mu = linfit.regression(A_total, b_total, check_condition_number=True, quiet=True)
+            A_tot = np.vstack(A_all)
+            b_tot = np.concatenate(b_all)
+
+            mu = linfit.regression(A_tot, b_tot, check_condition_number=True, quiet=False)
             mu_array[i, :] = mu
 
-        self.logger.info(f"Merged First-order μ fit completed (branch={branch_id}, {len(self.data_store)} datasets)")
-        
-        # 5. Retrieve EV0 for the target tau (for plotting)
+            self.logger.info(
+                f"[Linear μ | branch={branch_id}] R[{i}]={R[i]} | μ={mu} | cond(A_tot)={np.linalg.cond(A_tot):.2e}"
+            )
+
+        logger.info(f"Branch {branch_id}: ν/α = {cfg.nu[0] / cfg.alpha[0]:.2e}")
+        self.logger.info(f"First-order μ fit completed (single-branch={branch_id})")
+
+        return mu_array, R, EV0_flat
+
+    def _find_mu_fit_merged_linear(self, config, target_tau, branch_id):
+        """
+        LEGACY WRAPPER.
+        Prefer find_mu_fit(config, tau_train_list, branch_id).
+        """
+        # Train on all loaded taus (legacy behavior)
+        tau_train_list = sorted(self.data_store.keys())
+
+        mu_array, R, _ = self.find_mu_fit(
+            config=config,
+            tau_train_list=tau_train_list,
+            branch_id=branch_id,
+        )
+
+        # Return EV0 for target_tau if available (legacy plotting behavior)
         if target_tau in self.data_store:
             data_target = self.data_store[target_tau]
             if branch_id == 1:
-                EV0_target = np.hstack(data_target['EV0']).ravel()
+                EV0_target = np.hstack(data_target["EV0"]).ravel()
             else:
-                EV0_target = np.hstack(data_target['EV0_branch2']).ravel()
+                EV0_target = np.hstack(data_target["EV0_branch2"]).ravel()
         else:
-            self.logger.warning(f"Target tau {target_tau} not in training set. Returning None for EV0.")
+            self.logger.warning(
+                f"Target tau {target_tau} not in training set. Returning None for EV0."
+            )
             EV0_target = None
 
-        return mu_array, self.R, EV0_target
+        return mu_array, R, EV0_target
 
     def _linear_mu_complex(self, config, branch_id, n, tau, w_big, sigma_big, s_ref):
         w_big = np.asarray(w_big).reshape(-1)
@@ -374,16 +394,23 @@ class MUFITPipeline:
         mu_re_im = linfit.regression(A, b, check_condition_number=True, quiet=True)
         return mu_re_im[0] + 1j * mu_re_im[1]
 
-    def find_mu_fit_linear_selected_branches(self, config, tau):
+    def find_mu_fit_linear_selected_branches(self, config, tau_train_list: list[float]):
         """
         Run linear μ-fit for each branch listed in self.fit_branches.
         """
+        if not tau_train_list:
+            raise ValueError("tau_train_list must be non-empty.")
+
         results = {}
         for branch_id in self.fit_branches:
             if branch_id not in (1, 2):
                 raise ValueError(f"Invalid branch_id={branch_id} in fit_branches")
 
-            mu_array, R, EV0_flat = self.find_mu_fit(config=config, tau=tau, branch_id=branch_id)
+            mu_array, R, EV0_flat = self.find_mu_fit(
+                config=config,
+                tau_train_list=tau_train_list,
+                branch_id=branch_id,
+            )
             results[branch_id] = {"mu": mu_array, "R": R, "EV0": EV0_flat}
         return results
 
@@ -411,91 +438,103 @@ class MUFITPipeline:
     def find_mu_fit_second_order(
         self,
         config: object,
-        tau: float,
+        tau_train_list: list[float],
         order: int,
         enforce_symmetry: bool,
     ):
+        if not tau_train_list:
+            raise ValueError("tau_train_list must be non-empty.")
+
         if 1 not in self.fit_branches:
-            raise ValueError("fit_branches must contain branch 1 (defines reference mode s_1).")
+            raise ValueError(
+                "fit_branches must contain branch 1 (defines reference mode s_1)."
+            )
+
+        # Deterministic anchor tau for init + EV0 return
+        tau_init = float(min(tau_train_list))
 
         self.logger.info("Computing second-order μ fit (per R, global, multi-branch)")
 
         cond_list = []
         rank_list = []
-        
+
         n = self.n
         num_R = len(self.R)
 
         p_list = []
         prev_p = None
+
+        # Optional: validate requested taus exist if merged
+        if self.merged_optimization:
+            missing = [t for t in tau_train_list if t not in self.data_store]
+            if missing:
+                raise KeyError(
+                    f"Requested tau_train_list contains taus not loaded: {missing}. "
+                    f"Loaded taus: {sorted(self.data_store.keys())}"
+                )
+
         for i in range(num_R):
-            # Optional: use linear init (branch-aware)
             init_mu11 = None
             init_mu22 = None
 
-            # --- μ11 init (branch 1) ---
+            # -----------------------------
+            # μ11 init (branch 1) at tau_init
+            # -----------------------------
             try:
-                if self.merged_optimization and tau in self.data_store:
-                    d_init = self.data_store[tau]
-                    st1_init = d_init['EV_trajectories_stacked']
-                    ev1_init = np.hstack(d_init['EV0']).ravel()
-                    w_init = st1_init[i, 0, :].imag
-                    sig_init = st1_init[i, 0, :].real
-                    s1_init = ev1_init[i]
+                if self.merged_optimization and (tau_init in self.data_store):
+                    d_init = self.data_store[tau_init]
+                    st1_init = d_init["EV_trajectories_stacked"]
+                    ev1_init = np.hstack(d_init["EV0"]).ravel()
                 else:
                     st1_init = self._stacked(1)
                     ev1_init = self._ev0_flat(1)
-                    w_init = st1_init[i, 0, :].imag
-                    sig_init = st1_init[i, 0, :].real
-                    s1_init = ev1_init[i]
 
-                mu11_lin = self._linear_mu_complex(config, 1, n, tau, w_init, sig_init, s_ref=s1_init)
+                w_init = st1_init[i, 0, :].imag
+                sig_init = st1_init[i, 0, :].real
+                s1_init = ev1_init[i]
+
+                mu11_lin = self._linear_mu_complex(
+                    config, 1, n, tau_init, w_init, sig_init, s_ref=s1_init
+                )
                 init_mu11 = self._validate_linear_mu_init(mu11_lin, 1, float(self.R[i]))
             except Exception:
                 init_mu11 = None
 
-
-            # --- μ22 init (branch 2) [NEW] ---
+            # -----------------------------
+            # μ22 init (branch 2) at tau_init
+            # -----------------------------
             try:
-                # only if branch-2 data exists
                 if self.num_acoustic_branches >= 2 and (2 in self.fit_branches):
-
-                    if self.merged_optimization and tau in self.data_store:
-                        d_init = self.data_store[tau]
-                        st2_init = d_init.get('EV_trajectories_branch2_stacked')
-                        ev2_obj = d_init.get('EV0_branch2')
+                    if self.merged_optimization and (tau_init in self.data_store):
+                        d_init = self.data_store[tau_init]
+                        st2_init = d_init.get("EV_trajectories_branch2_stacked")
+                        ev2_obj = d_init.get("EV0_branch2")
                         if st2_init is None or ev2_obj is None:
                             raise ValueError("Merged branch-2 data missing for init_mu22.")
                         ev2_init = np.hstack(ev2_obj).ravel()
-
-                        w2_init = st2_init[i, 0, :].imag
-                        sig2_init = st2_init[i, 0, :].real
-                        s2_init = ev2_init[i]
-
                     else:
                         st2_init = self._stacked(2)
                         ev2_init = self._ev0_flat(2)
-                        w2_init = st2_init[i, 0, :].imag
-                        sig2_init = st2_init[i, 0, :].real
-                        s2_init = ev2_init[i]
 
-                    mu22_lin = self._linear_mu_complex(config, 2, n, tau, w2_init, sig2_init, s_ref=s2_init)
+                    w2_init = st2_init[i, 0, :].imag
+                    sig2_init = st2_init[i, 0, :].real
+                    s2_init = ev2_init[i]
+
+                    mu22_lin = self._linear_mu_complex(
+                        config, 2, n, tau_init, w2_init, sig2_init, s_ref=s2_init
+                    )
                     init_mu22 = self._validate_linear_mu_init(mu22_lin, 2, float(self.R[i]))
-
             except Exception:
                 init_mu22 = None
 
-
-            # ------------------------------------------------------
-            # Build Data Blocks
-            # ------------------------------------------------------
+            # -----------------------------
+            # Build data blocks for this R[i]
+            # -----------------------------
             data_blocks = []
 
             def add_blocks(t_val, st1, ev1, st2, ev2, R_val):
-                # s_1 for this condition
                 s_1_local = ev1[i]
-                
-                # s_2 for this condition
+
                 if ev2 is not None:
                     s_2_local = ev2[i]
                 else:
@@ -507,50 +546,65 @@ class MUFITPipeline:
                 # Branch 1
                 w1 = st1[i, 0, :].imag
                 sig1 = st1[i, 0, :].real
-                data_blocks.append({
-                    'tag': f'tau={t_val:.4f}_b1',
-                    'tau': t_val,
-                    'w': w1,
-                    'sigma': sig1,
-                    's_ref': s_1_local,
-                    's_1': s_1_local,
-                    's_2': s_2_local
-                })
+                data_blocks.append(
+                    {
+                        "tag": f"tau={t_val:.4f}_b1",
+                        "tau": float(t_val),
+                        "w": w1,
+                        "sigma": sig1,
+                        "s_ref": s_1_local,
+                        "s_1": s_1_local,
+                        "s_2": s_2_local,
+                    }
+                )
 
                 # Branch 2
                 if st2 is not None and (2 in self.fit_branches):
                     w2 = st2[i, 0, :].imag
                     sig2 = st2[i, 0, :].real
-                    data_blocks.append({
-                        'tag': f'tau={t_val:.4f}_b2',
-                        'tau': t_val,
-                        'w': w2,
-                        'sigma': sig2,
-                        's_ref': s_2_local,
-                        's_1': s_1_local,
-                        's_2': s_2_local
-                    })
+                    data_blocks.append(
+                        {
+                            "tag": f"tau={t_val:.4f}_b2",
+                            "tau": float(t_val),
+                            "w": w2,
+                            "sigma": sig2,
+                            "s_ref": s_2_local,
+                            "s_1": s_1_local,
+                            "s_2": s_2_local,
+                        }
+                    )
 
             if self.merged_optimization:
-                for t_val, d in self.data_store.items():
-                    st1 = d['EV_trajectories_stacked']
-                    ev1 = np.hstack(d['EV0']).ravel()
-                    st2 = d.get('EV_trajectories_branch2_stacked')
+                # Train on EXACTLY tau_train_list
+                for t_val in tau_train_list:
+                    d = self.data_store[t_val]
+                    st1 = d["EV_trajectories_stacked"]
+                    ev1 = np.hstack(d["EV0"]).ravel()
+
+                    st2 = d.get("EV_trajectories_branch2_stacked")
                     ev2 = None
-                    if st2 is not None:
-                        ev2 = np.hstack(d['EV0_branch2']).ravel()
+                    if st2 is not None and d.get("EV0_branch2") is not None:
+                        ev2 = np.hstack(d["EV0_branch2"]).ravel()
+
                     add_blocks(t_val, st1, ev1, st2, ev2, self.R[i])
+
             else:
+                # Non-merged: only one dataset exists; treat tau_train_list[0] as its label
+                t_val = float(tau_train_list[0])
                 st1 = self._stacked(1)
                 ev1 = self._ev0_flat(1)
+
                 st2 = None
                 ev2 = None
                 if self.num_acoustic_branches >= 2:
                     st2 = self._stacked(2)
                     ev2 = self._ev0_flat(2)
-                add_blocks(tau, st1, ev1, st2, ev2, self.R[i])
-            
+
+                add_blocks(t_val, st1, ev1, st2, ev2, self.R[i])
+
+            # -----------------------------
             # Solve per-R global nonlinear LSQ
+            # -----------------------------
             p_opt, info = sofit.solve_mu_per_R(
                 config=config,
                 n=n,
@@ -559,11 +613,15 @@ class MUFITPipeline:
                 quiet=True,
                 init_mu11=init_mu11,
                 init_mu22=init_mu22,
-                prev_p_opt=prev_p,    
+                prev_p_opt=prev_p,
             )
 
-            prev_p = p_opt            
+            prev_p = p_opt
             p_list.append(p_opt)
+
+            # (Optional) capture diagnostics if your solver returns them
+            # cond_list.append(info.get("cond_A_phys", np.nan))
+            # rank_list.append(info.get("rank_A_phys", np.nan))
 
             self.logger.info(
                 f"[Second-order μ] R[{i}]={self.R[i]:.2e} | "
@@ -574,14 +632,13 @@ class MUFITPipeline:
                 f"rank={info.get('rank_A_phys', None)}"
             )
 
-
         mu_array = np.asarray(p_list, dtype=float)
         self.mu_cond_numbers = np.asarray(cond_list)
         self.mu_ranks = np.asarray(rank_list)
 
-        # Return EV0 for the target tau (for plotting consistency)
-        if self.merged_optimization and tau in self.data_store:
-            EV0_ret = np.hstack(self.data_store[tau]['EV0']).ravel()
+        # Return EV0 from the anchor tau_init (deterministic)
+        if self.merged_optimization and (tau_init in self.data_store):
+            EV0_ret = np.hstack(self.data_store[tau_init]["EV0"]).ravel()
         else:
             EV0_ret = self._ev0_flat(1)
 
