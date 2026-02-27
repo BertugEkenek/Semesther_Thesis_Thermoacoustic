@@ -43,7 +43,6 @@ class SolveEigenWorkflow:
         flame_model_approximator: str,
         tau: float,
         order: int,
-        use_only_acoustic: bool,
         enforce_symmetry: bool,
         save_mu: bool,
         use_saved_mu: bool,
@@ -89,7 +88,6 @@ class SolveEigenWorkflow:
                     self.config,
                     tau,
                     order,
-                    use_only_acoustic,
                     enforce_symmetry,
                 )
             else:
@@ -190,7 +188,6 @@ class SolveEigenWorkflow:
         save_mu: bool,
         use_saved_mu: bool,
         save_solution: bool,
-        use_only_acoustic: bool,
         use_txt_solutions: bool,
         enforce_symmetry: bool,
         nprandomsigma: float,
@@ -221,7 +218,6 @@ class SolveEigenWorkflow:
             F_model.__name__,
             tau,
             order,
-            use_only_acoustic,
             enforce_symmetry,
             save_mu,
             use_saved_mu,

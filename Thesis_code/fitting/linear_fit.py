@@ -143,16 +143,10 @@ def create_b_column_trajectory_vectorized(config, n, tau, w, sigma, s_ref):
 # ------------------------------------------------------------
 # Public builders (stack-safe)
 # ------------------------------------------------------------
-def build_A(n, tau, w_big, sigma_big, s_ref, use_only_acoustic=False, weights=None):
+def build_A(n, tau, w_big, sigma_big, s_ref, weights=None):
 
     if w_big.shape != sigma_big.shape:
         raise ValueError("w_big and sigma_big must have same shape")
-
-    if use_only_acoustic:
-        A = create_A_column_trajectory_vectorized(
-            n, tau, w_big, sigma_big, s_ref
-        )
-        return A
 
     m, T = w_big.shape
     A_rows = []
@@ -168,15 +162,10 @@ def build_A(n, tau, w_big, sigma_big, s_ref, use_only_acoustic=False, weights=No
     return np.vstack(A_rows)
 
 
-def build_b(config, n, tau, w_big, sigma_big, s_ref, use_only_acoustic=False, weights=None):
+def build_b(config, n, tau, w_big, sigma_big, s_ref, weights=None):
 
     if w_big.shape != sigma_big.shape:
         raise ValueError("w_big and sigma_big must have same shape")
-
-    if use_only_acoustic:
-        return create_b_column_trajectory_vectorized(
-            config, n, tau, w_big, sigma_big, s_ref
-        )
 
     m, T = w_big.shape
     b_rows = []

@@ -390,7 +390,6 @@ def solve_mu_per_R(
     config,
     n,
     data_blocks,
-    use_only_acoustic,
     enforce_symmetry,
     quiet=False,
     init_mu11: complex | None = None,
@@ -467,10 +466,6 @@ def solve_mu_per_R(
         w_b = ensure_2d(blk['w'])
         s_b = ensure_2d(blk['sigma'])
         
-        if use_only_acoustic:
-            w_b = w_b[:, :1]
-            s_b = s_b[:, :1]
-            
         _append_block(
             tag=blk['tag'],
             w_blk=w_b,

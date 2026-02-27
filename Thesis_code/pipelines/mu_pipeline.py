@@ -30,7 +30,6 @@ class MUFITPipeline:
         data_path: str | None,
         txt_solution_path: str,
         order: int,
-        use_only_acoustic: bool,
         use_txt_solutions: bool,
         enforce_symmetry: bool,
         num_acoustic_branches: int = 1,
@@ -44,7 +43,6 @@ class MUFITPipeline:
         self.order = order
         self.config = config
         self.logger = logger
-        self.use_only_acoustic = use_only_acoustic
         self.use_txt_solutions = use_txt_solutions
         self.enforce_symmetry = enforce_symmetry
 
@@ -292,10 +290,10 @@ class MUFITPipeline:
             w = stacked[i, 0, :].imag
             sigma = stacked[i, 0, :].real
 
-            A = linfit.build_A(n, tau, w, sigma, s_ref=s_ref, use_only_acoustic=True)
+            A = linfit.build_A(n, tau, w, sigma, s_ref=s_ref)
 
             cfg = config.get_branch_config(branch_id)
-            b = linfit.build_b(cfg, n, tau, w, sigma, s_ref=s_ref, use_only_acoustic=True)
+            b = linfit.build_b(cfg, n, tau, w, sigma, s_ref=s_ref)
 
             mu = linfit.regression(A, b, check_condition_number=True, quiet=False)
             mu_array[i, :] = mu
@@ -337,9 +335,9 @@ class MUFITPipeline:
                 sigma = stacked[i, 0, :].real
 
                 # Build matrices for this specific tau
-                A_i = linfit.build_A(self.n, t_val, w, sigma, s_ref=s_ref, use_only_acoustic=True)
+                A_i = linfit.build_A(self.n, t_val, w, sigma, s_ref=s_ref)
                 cfg = config.get_branch_config(branch_id)
-                b_i = linfit.build_b(cfg, self.n, t_val, w, sigma, s_ref=s_ref, use_only_acoustic=True)
+                b_i = linfit.build_b(cfg, self.n, t_val, w, sigma, s_ref=s_ref)
 
                 A_rows.append(A_i)
                 b_rows.append(b_i)
@@ -370,8 +368,8 @@ class MUFITPipeline:
         sigma_big = np.asarray(sigma_big).reshape(-1)
 
         cfg = config.get_branch_config(branch_id)
-        A = linfit.build_A(n, tau, w_big, sigma_big, s_ref=s_ref, use_only_acoustic=True)
-        b = linfit.build_b(cfg, n, tau, w_big, sigma_big, s_ref=s_ref, use_only_acoustic=True)
+        A = linfit.build_A(n, tau, w_big, sigma_big, s_ref=s_ref)
+        b = linfit.build_b(cfg, n, tau, w_big, sigma_big, s_ref=s_ref)
 
         mu_re_im = linfit.regression(A, b, check_condition_number=True, quiet=True)
         return mu_re_im[0] + 1j * mu_re_im[1]
@@ -415,7 +413,6 @@ class MUFITPipeline:
         config: object,
         tau: float,
         order: int,
-        use_only_acoustic: bool,
         enforce_symmetry: bool,
     ):
         if 1 not in self.fit_branches:
@@ -558,7 +555,6 @@ class MUFITPipeline:
                 config=config,
                 n=n,
                 data_blocks=data_blocks,
-                use_only_acoustic=use_only_acoustic,
                 enforce_symmetry=enforce_symmetry,
                 quiet=True,
                 init_mu11=init_mu11,

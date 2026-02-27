@@ -15,20 +15,19 @@ def main():
     config_name = "BRS"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
     flame_model_choice = "Padé"             # "Padé" or "Taylor"
-    mu_order = "First"                     # "First" or "Second"
-    Galerkin = "First"                     # "First" or "Second"
+    mu_order = "Second"                     # "First" or "Second"
+    Galerkin = "Second"                     # "First" or "Second"
 
     correction = True
     enforce_symmetry = True
-    use_only_acoustic = False
     comparison = True
 
     # --- Multi-branch configuration ---
     num_acoustic_branches = 2       # Set to 2 when using two .mat files
-    fit_branches = [2]             # Later: [1, 2] to use two branches
+    fit_branches = [1,2]             # Later: [1, 2] to use two branches
 
     # --- Merged Optimization Config ---
-    merged_optimization = False       # Set to True to enable multi-tau optimization
+    merged_optimization = True       # Set to True to enable multi-tau optimization
     tau_train_list = [0.004, 0.007]   # List of tau values to merge
     
     data_paths_map = {}
@@ -41,7 +40,7 @@ def main():
 
     tau = 0.007
     order = 12
-    R_value = -0.7
+    R_value = -0.8
 
     # -----------------------------------------------------------
     # 2. Configuration object
@@ -101,7 +100,6 @@ def main():
         data_path=config.data_path,
         txt_solution_path=config.txt_solution_path,
         order=order,
-        use_only_acoustic=use_only_acoustic,
         use_txt_solutions=use_txt_solutions,
         enforce_symmetry=enforce_symmetry,
         num_acoustic_branches=num_acoustic_branches,
@@ -142,7 +140,6 @@ def main():
         save_mu=save_mu,
         use_saved_mu=use_saved_mu,
         save_solution=save_solution,
-        use_only_acoustic=use_only_acoustic,
         use_txt_solutions=use_txt_solutions,
         enforce_symmetry=enforce_symmetry,
         nprandomsigma=nprandomsigma,
