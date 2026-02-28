@@ -144,41 +144,39 @@ def create_b_column_trajectory_vectorized(config, n, tau, w, sigma, s_ref):
 # Public builders (stack-safe)
 # ------------------------------------------------------------
 def build_A(n, tau, w_big, sigma_big, s_ref, weights=None):
+    w = np.asarray(w_big).reshape(-1)
+    sigma = np.asarray(sigma_big).reshape(-1)
 
-    if w_big.shape != sigma_big.shape:
+    if w.shape != sigma.shape:
         raise ValueError("w_big and sigma_big must have same shape")
 
-    m, T = w_big.shape
-    A_rows = []
+    A = create_A_column_trajectory_vectorized(n, tau, w, sigma, s_ref)
 
-    for j in range(T):
-        Aj = create_A_column_trajectory_vectorized(
-            n, tau, w_big[:, j], sigma_big[:, j], s_ref
-        )
-        if weights is not None:
-            Aj *= weights[j]
-        A_rows.append(Aj)
+    if weights is not None:
+        weights = np.asarray(weights).reshape(-1)
+        if weights.shape[0] != w.shape[0]:
+            raise ValueError("weights must have length equal to number of samples")
+        A = A * weights[:, None]   # weight rows per sample
 
-    return np.vstack(A_rows)
+    return A
 
 
 def build_b(config, n, tau, w_big, sigma_big, s_ref, weights=None):
+    w = np.asarray(w_big).reshape(-1)
+    sigma = np.asarray(sigma_big).reshape(-1)
 
-    if w_big.shape != sigma_big.shape:
+    if w.shape != sigma.shape:
         raise ValueError("w_big and sigma_big must have same shape")
 
-    m, T = w_big.shape
-    b_rows = []
+    b = create_b_column_trajectory_vectorized(config, n, tau, w, sigma, s_ref)
 
-    for j in range(T):
-        bj = create_b_column_trajectory_vectorized(
-            config, n, tau, w_big[:, j], sigma_big[:, j], s_ref
-        )
-        if weights is not None:
-            bj *= weights[j]
-        b_rows.append(bj)
+    if weights is not None:
+        weights = np.asarray(weights).reshape(-1)
+        if weights.shape[0] != w.shape[0]:
+            raise ValueError("weights must have length equal to number of samples")
+        b = b * weights  # per-sample weights
 
-    return np.concatenate(b_rows)
+    return b
 
 
 # ------------------------------------------------------------

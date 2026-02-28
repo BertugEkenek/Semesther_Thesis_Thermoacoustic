@@ -12,7 +12,7 @@ def main():
     # -----------------------------------------------------------
     # 1. User-configurable parameters
     # -----------------------------------------------------------
-    config_name = "BRS"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
+    config_name = "Rijke_tube_1"            # Alternatives: "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
     flame_model_choice = "Padé"             # "Padé" or "Taylor"
     mu_order = "Second"                     # "First" or "Second"
@@ -29,7 +29,7 @@ def main():
     # --- Merged Optimization Config ---
     merged_optimization = True       # Set to True to enable multi-tau optimization
     tau_plot = 0.007
-    tau_train_list = [tau_plot]   # List of tau values to merge
+    tau_train_list = [0.004, 0.007]   # List of tau values to merge
     
     data_paths_map = {}
 
@@ -41,7 +41,7 @@ def main():
 
     
     order = 12
-    R_value = -0.8
+    R_value = -0.7
 
     # -----------------------------------------------------------
     # 2. Configuration object

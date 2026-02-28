@@ -48,7 +48,7 @@ class SolveEigenWorkflow:
         use_saved_mu: bool,
     ):
         """
-        Compute or load μ-array and corresponding R, EV0.
+        Compute or load μ-array and corresponding R.
         """
         if not tau_train_list:
             raise ValueError("tau_train_list must be non-empty.")
@@ -64,7 +64,7 @@ class SolveEigenWorkflow:
             EV0_flat = np.hstack(self.mu_pipeline.EV0).ravel()
             R = self.mu_pipeline.R
             self.logger.info("No correction: using μ = 1.0")
-            return mu_array, R, EV0_flat
+            return mu_array, R
 
         if not use_saved_mu:
             if mu_order == "First":
@@ -77,7 +77,6 @@ class SolveEigenWorkflow:
                     res = lin_results[branch_id]
                     mu_array = res["mu"]
                     R = res["R"]
-                    EV0_flat = res["EV0"]
 
                     self.logger.info(
                         f"Linear μ-fit completed for branch {branch_id} only."
@@ -112,17 +111,14 @@ class SolveEigenWorkflow:
                 tau_tag,
             )
 
-        return mu_array, R, EV0_flat
+        return mu_array, R
 
     # ----------------------------------------------------------
-    def _save_mu_values(self, mu_array, R, EV0_flat, flame_model_approximator, tau):
+    def _save_mu_values(self, mu_array, R, EV0_flat, flame_model_approximator, tau_tag: str):
         save_dir = "./Results/Mu_values"
         os.makedirs(save_dir, exist_ok=True)
 
-        base = (
-            f"mu_values_{flame_model_approximator}_"
-            f"{self.config.name}_{int(tau*1000)}_ms"
-        )
+        base = f"mu_values_{flame_model_approximator}_{self.config.name}_{tau_tag}"
 
         np.savetxt(
             os.path.join(save_dir, base),
@@ -131,7 +127,7 @@ class SolveEigenWorkflow:
             delimiter=",",
         )
 
-        ev0_path = f"./data/{int(tau*1000)}ms/"
+        ev0_path = os.path.join("./data", tau_tag)
         os.makedirs(ev0_path, exist_ok=True)
 
         np.savetxt(
@@ -148,32 +144,33 @@ class SolveEigenWorkflow:
             delimiter=",",
         )
 
-        self.logger.info("Saved μ-array, EV0, and R tensors.")
+        self.logger.info(f"Saved μ-array, EV0, and R (tag={tau_tag}).")
 
-    # ----------------------------------------------------------
-    def _load_mu_values(self, flame_model_approximator, tau):
-        base = (
-            f"./Results/Mu_values/"
-            f"mu_values_{flame_model_approximator}_{self.config.name}_{int(tau*1000)}_ms"
+
+    def _load_mu_values(self, flame_model_approximator, tau_tag: str):
+        base = os.path.join(
+            "./Results/Mu_values",
+            f"mu_values_{flame_model_approximator}_{self.config.name}_{tau_tag}",
         )
 
         mu_array = np.loadtxt(base, dtype=complex, delimiter=",")
 
-        ev0_path = f"./data/{int(tau*1000)}ms/"
+        ev0_path = os.path.join("./data", tau_tag)
+
         EV0_flat = np.loadtxt(
             os.path.join(ev0_path, f"{self.config.name}_EV0_values"),
             dtype=complex,
             delimiter=",",
         )
+
         R = np.loadtxt(
             os.path.join(ev0_path, f"{self.config.name}_R_values"),
             dtype=float,
             delimiter=",",
         )
 
-        self.logger.info("Loaded μ-array, EV0, and R from disk.")
+        self.logger.info(f"Loaded μ-array, EV0, and R from disk (tag={tau_tag}).")
         return mu_array, R, EV0_flat
-
     # ----------------------------------------------------------
     def run(
         self,
@@ -218,7 +215,7 @@ class SolveEigenWorkflow:
         # ----------------------------------------------------------
         # 1) Compute μ
         # ----------------------------------------------------------
-        mu_array, R, EV0_flat = self._compute_mu(
+        mu_array, R = self._compute_mu(
             correction=correction,
             mu_order=mu_order,
             flame_model_approximator=F_model.__name__,
@@ -228,13 +225,17 @@ class SolveEigenWorkflow:
             save_mu=save_mu,
             use_saved_mu=use_saved_mu,
         )
-        # Flatten branch-2 EV0 if available
-        EV0_branch2_flat = None
-        if getattr(self.mu_pipeline, "EV0_branch2", None) is not None:
-            try:
-                EV0_branch2_flat = np.hstack(self.mu_pipeline.EV0_branch2).ravel()
-            except Exception as exc:
-                self.logger.error(f"Failed to flatten EV0_branch2: {exc}")
+        # ----------------------------------------------------------
+        # Plot-time EV0 must come from tau_plot dataset
+        # ----------------------------------------------------------
+        tau_key_plot = tau_plot if tau_plot in self.mu_pipeline.data_store else next(iter(self.mu_pipeline.data_store.keys()))
+
+        d_plot = self.mu_pipeline.data_store[tau_key_plot]
+        EV0_flat_plot = np.hstack(d_plot["EV0"]).ravel()
+
+        EV0_branch2_flat_plot = None
+        if d_plot.get("EV0_branch2") is not None:
+            EV0_branch2_flat_plot = np.hstack(d_plot["EV0_branch2"]).ravel()
 
         # ----------------------------------------------------------
         # 2) Prepare main eigenvalue plot
@@ -245,8 +246,8 @@ class SolveEigenWorkflow:
             R_value,
             mu_order,
             mu_array,
-            EV0_flat,
-            EV0_branch2_flat,
+            EV0_flat_plot,
+            EV0_branch2_flat_plot,
             self.config,
             tau_plot,
             filename,

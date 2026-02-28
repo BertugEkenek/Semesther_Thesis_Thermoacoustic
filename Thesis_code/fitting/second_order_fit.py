@@ -106,9 +106,6 @@ def svd_rank(A, rel_thresh=1e-10):
         return 0, np.nan, np.nan, np.nan, np.array([])
 
 
-def ensure_2d(arr):
-    arr = np.asarray(arr)
-    return arr[:, None] if arr.ndim == 1 else arr
 
 
 def complex_to_q(mu: complex):
@@ -267,8 +264,6 @@ def _collapse_12_to_identifiable(M_all, config):
       b_2d:   (N,)
       meta:   dict
     """
-    pdim_basis = M_all.shape[2]
-    M_2d = M_all.reshape(-1, pdim_basis)
 
     # 12 → 8 (STRUCTURAL)
     m = M_all.shape[0]
@@ -406,8 +401,8 @@ def solve_mu_per_R(
       {
         'tag': str,
         'tau': float,
-        'w': array (m, T),
-        'sigma': array (m, T),
+        'w': array (m,),
+        'sigma': array (m,),
         's_ref': complex,
         's_1': complex,
         's_2': complex
@@ -431,49 +426,55 @@ def solve_mu_per_R(
     rel_svd_thresh = float(getattr(config, "mu_svd_rel_thresh", 1e-10))
 
     def _append_block(tag, w_blk, sig_blk, s_ref_blk, tau_blk, s_1_blk, s_2_blk):
-        m, T = w_blk.shape
-        for j in range(T):
-            w = w_blk[:, j]
-            sig = sig_blk[:, j]
+        # Normalize to 1D (single trajectory)
+        w_blk = np.asarray(w_blk).reshape(-1)
+        sig_blk = np.asarray(sig_blk).reshape(-1)
 
-            M_all, b_all = _build_M_all_and_b_all(
-                config, tau_blk, w, sig, s_ref_blk, s_1_blk, s_2_blk, n
-            )
-            A_phys, _ = _collapse_12_to_identifiable(M_all, config)
-            b_2d = b_all.reshape(-1)
+        if w_blk.shape != sig_blk.shape:
+            raise ValueError(f"{tag}: w_blk and sig_blk must have same shape, got {w_blk.shape} vs {sig_blk.shape}")
 
-            col_norms = np.linalg.norm(A_phys, axis=0)
-            max_norm = np.max(col_norms) if np.any(col_norms > 0) else 1.0
-            eff = np.maximum(col_norms, rel_col_thresh * max_norm)
-            A_scaled = A_phys / eff
+        w = w_blk
+        sig = sig_blk
 
-            A_blocks.append((A_scaled, eff, A_phys))
-            b_blocks.append(b_2d)
+        # Build regression blocks
+        M_all, b_all = _build_M_all_and_b_all(
+            config, tau_blk, w, sig, s_ref_blk, s_1_blk, s_2_blk, n
+        )
+        A_phys, _ = _collapse_12_to_identifiable(M_all, config)
+        b_2d = b_all.reshape(-1)
 
-            rnk, smax, smin, ratio, _ = svd_rank(A_scaled, rel_thresh=rel_svd_thresh)
-            block_info.append(dict(
+        # Column scaling (same logic, no change)
+        col_norms = np.linalg.norm(A_phys, axis=0)
+        max_norm = np.max(col_norms) if np.any(col_norms > 0) else 1.0
+        eff = np.maximum(col_norms, rel_col_thresh * max_norm)
+        A_scaled = A_phys / eff
+
+        A_blocks.append((A_scaled, eff, A_phys))
+        b_blocks.append(b_2d)
+
+        rnk, smax, smin, ratio, _ = svd_rank(A_scaled, rel_thresh=rel_svd_thresh)
+        block_info.append(
+            dict(
                 block=tag,
-                time_index=j,
                 cond_scaled=cond_safe(A_scaled),
                 rank_scaled=rnk,
                 svd_sigma_min_scaled=smin,
                 svd_ratio_scaled=ratio,
                 p_dim=A_phys.shape[1],
-            ))
+            )
+        )
 
     # Process all blocks
     for blk in data_blocks:
-        w_b = ensure_2d(blk['w'])
-        s_b = ensure_2d(blk['sigma'])
-        
+
         _append_block(
-            tag=blk['tag'],
-            w_blk=w_b,
-            sig_blk=s_b,
-            s_ref_blk=blk['s_ref'],
-            tau_blk=blk['tau'],
-            s_1_blk=blk['s_1'],
-            s_2_blk=blk['s_2']
+            tag=blk["tag"],
+            w_blk=blk["w"],
+            sig_blk=blk["sigma"],
+            s_ref_blk=blk["s_ref"],
+            tau_blk=blk["tau"],
+            s_1_blk=blk["s_1"],
+            s_2_blk=blk["s_2"],
         )
 
     A_phys = np.vstack([x[2] for x in A_blocks])
@@ -707,7 +708,7 @@ def solve_mu_per_R(
         cond_A_phys=cond_safe(A_phys),
         rank_A_phys=svd_rank(A_phys, rel_thresh=rel_svd_thresh)[0],
         mu_svd_rel_thresh=rel_svd_thresh,
-        p_dim=int(6 if enforce_symmetry else 8),
+        p_dim=int(np.asarray(p_opt).size),# check this later
         mu12_sign=int(best_sign),
         bake_rank_one=bool(bake),
         hard_constraint=bool(hard),
