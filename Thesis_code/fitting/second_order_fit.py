@@ -17,49 +17,49 @@ def cond_safe(A) -> float:
     except Exception:
         return float(np.inf)
     
-def build_n_weights(n, weights=None, *, kind="exp", beta=2.0, power=1.0, eps=1e-6):
-    """
-    Returns weights for samples corresponding to n[1:].
-    Output shape: (m,) where m = len(n)-1.
-    Higher weights for earlier/smaller n.
+# def build_n_weights(n, weights=None, *, kind="exp", beta=2.0, power=1.0, eps=1e-6):
+#     """
+#     Returns weights for samples corresponding to n[1:].
+#     Output shape: (m,) where m = len(n)-1.
+#     Higher weights for earlier/smaller n.
 
-    weights can be:
-      - None: use rule (kind,beta/power)
-      - scalar: constant weight
-      - array-like of shape (m,)
-      - callable: weights = f(n_mid) -> (m,)
-    """
-    n = np.asarray(n).ravel()
-    m = n.size - 1
-    n_mid = n[1:]
+#     weights can be:
+#       - None: use rule (kind,beta/power)
+#       - scalar: constant weight
+#       - array-like of shape (m,)
+#       - callable: weights = f(n_mid) -> (m,)
+#     """
+#     n = np.asarray(n).ravel()
+#     m = n.size - 1
+#     n_mid = n[1:]
 
-    if weights is None:
-        if kind == "exp":
-            # exp weighting in n-value (stable)
-            x = n_mid - float(n_mid.min())
-            w = np.exp(-beta * x / (float(x.max()) + eps if x.max() > 0 else 1.0))
-        elif kind == "power":
-            w = 1.0 / np.power(n_mid + eps, power)
-        elif kind == "index_exp":
-            k = np.arange(m)
-            w = np.exp(-beta * k)
-        else:
-            raise ValueError(f"Unknown weight kind: {kind}")
-        return w.astype(float)
+#     if weights is None:
+#         if kind == "exp":
+#             # exp weighting in n-value (stable)
+#             x = n_mid - float(n_mid.min())
+#             w = np.exp(-beta * x / (float(x.max()) + eps if x.max() > 0 else 1.0))
+#         elif kind == "power":
+#             w = 1.0 / np.power(n_mid + eps, power)
+#         elif kind == "index_exp":
+#             k = np.arange(m)
+#             w = np.exp(-beta * k)
+#         else:
+#             raise ValueError(f"Unknown weight kind: {kind}")
+#         return w.astype(float)
 
-    if np.isscalar(weights):
-        return np.full(m, float(weights), float)
+#     if np.isscalar(weights):
+#         return np.full(m, float(weights), float)
 
-    if callable(weights):
-        w = np.asarray(weights(n_mid), float).ravel()
-        if w.size != m:
-            raise ValueError(f"Callable weights must return shape ({m},), got {w.shape}")
-        return w
+#     if callable(weights):
+#         w = np.asarray(weights(n_mid), float).ravel()
+#         if w.size != m:
+#             raise ValueError(f"Callable weights must return shape ({m},), got {w.shape}")
+#         return w
 
-    w = np.asarray(weights, float).ravel()
-    if w.size != m:
-        raise ValueError(f"weights must have shape ({m},), got {w.shape}")
-    return w
+#     w = np.asarray(weights, float).ravel()
+#     if w.size != m:
+#         raise ValueError(f"weights must have shape ({m},), got {w.shape}")
+#     return w
 
 def p_to_q_from_previous(p_prev, enforce_symmetry, hard=False, bake=False):
     """
@@ -104,8 +104,6 @@ def svd_rank(A, rel_thresh=1e-10):
         return rank, sigma_max, sigma_min, ratio, svals
     except Exception:
         return 0, np.nan, np.nan, np.nan, np.array([])
-
-
 
 
 def complex_to_q(mu: complex):

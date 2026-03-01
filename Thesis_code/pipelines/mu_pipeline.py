@@ -35,8 +35,8 @@ class MUFITPipeline:
         num_acoustic_branches: int = 1,
         fit_branches=None,
         branch2_data_path: str | None = None,
-        merged_optimization: bool = False,
         data_paths_map: dict | None = None,
+        tau_single: float | None = None,
     ):
         self.data_path = data_path
         self.txt_solution_path = txt_solution_path
@@ -50,7 +50,6 @@ class MUFITPipeline:
         self.fit_branches = fit_branches if fit_branches is not None else [1]
         self.branch2_data_path = branch2_data_path
 
-        self.merged_optimization = merged_optimization
         self.data_paths_map = data_paths_map
         self.data_store = {}  # Stores data for multiple taus: {tau: { ... }}
 
@@ -73,22 +72,25 @@ class MUFITPipeline:
         # optional μ(R) model
         self.mu_R_coeffs = None
 
+        self.tau_single = tau_single
+
     # ==========================================================
     # loading
     # ==========================================================
     def load_all_data(self):
-        if self.merged_optimization:
-            self._load_merged_data()
-            # Perform reshape for all loaded datasets
+        if self.data_paths_map:
+            self._load_multi_tau_from_map()
             for tau, data in self.data_store.items():
-                data['EV_trajectories_reshaped'] = reshape_EV_trajectories(
-                    data['EV_trajectories'], data['min_size']
+                data["EV_trajectories_reshaped"] = reshape_EV_trajectories(
+                    data["EV_trajectories"], data["min_size"]
                 )
-                if self.num_acoustic_branches >= 2:
-                    data['EV_trajectories_branch2_reshaped'] = reshape_EV_trajectories(
-                        data['EV_trajectories_branch2'], data['min_size_branch2']
+                if self.num_acoustic_branches >= 2 and data.get("EV_trajectories_branch2") is not None:
+                    data["EV_trajectories_branch2_reshaped"] = reshape_EV_trajectories(
+                        data["EV_trajectories_branch2"], data["min_size_branch2"]
                     )
-            self.logger.info("Merged data loading and reshaping completed.")
+                else:
+                    data["EV_trajectories_branch2_reshaped"] = None
+            self.logger.info("Multi-τ data loading and reshaping completed.")
             return
 
         if self.use_txt_solutions:
@@ -104,7 +106,7 @@ class MUFITPipeline:
             self.EV_trajectories_branch2_reshaped = reshape_EV_trajectories(
                 self.EV_trajectories_branch2, self.min_size_branch2
             )
-
+        
         self.logger.info("Data loading completed.")
 
     def _load_txt(self):
@@ -133,7 +135,7 @@ class MUFITPipeline:
 
     def _load_mat(self):
         if self.data_path is None:
-            raise ValueError("data_path is None, but _load_mat was called (merged_optimization=False).")
+            raise ValueError("data_path is None, but _load_mat was called.")
 
         self.logger.info(f"Loading branch-1 data from MAT: {self.data_path}")
         (self.n, self.R, self.EV0, self.EV_trajectories, _, _, self.min_size) = load_data(
@@ -160,13 +162,11 @@ class MUFITPipeline:
         if not np.allclose(self.R, R2):
             raise ValueError("Branch 1 and branch 2 have different R grids.")
 
-    def _load_merged_data(self):
-        if not self.data_paths_map:
-            raise ValueError("merged_optimization is True but data_paths_map is missing.")
+    def _load_multi_tau_from_map(self):
 
         first = True
         for tau, paths in self.data_paths_map.items():
-            self.logger.info(f"Loading merged data for tau={tau}")
+            self.logger.info(f"Loading data for tau={tau}")
             
             # Load branch 1
             (n, R, EV0, EV_traj, _, _, min_size) = load_data(
@@ -215,16 +215,17 @@ class MUFITPipeline:
           - MAT becomes [R, τ, n] complex after prepare_mu
           - each entry is the first eigenvalue in the stored array (if any)
         """
-        if self.merged_optimization:
+        if self.data_paths_map:
             for tau, data in self.data_store.items():
-                data['EV_trajectories_stacked'] = prepare_mu(
-                    data['EV_trajectories_reshaped'], data['min_size']
+                data["EV_trajectories_stacked"] = prepare_mu(
+                    data["EV_trajectories_reshaped"], data["min_size"]
                 )
-                if self.num_acoustic_branches >= 2 and data['EV_trajectories_branch2_reshaped'] is not None:
-                    data['EV_trajectories_branch2_stacked'] = prepare_mu(
-                        data['EV_trajectories_branch2_reshaped'], data['min_size_branch2']
+                if self.num_acoustic_branches >= 2 and data.get("EV_trajectories_branch2_reshaped") is not None:
+                    data["EV_trajectories_branch2_stacked"] = prepare_mu(
+                        data["EV_trajectories_branch2_reshaped"], data["min_size_branch2"]
                     )
-            self.logger.info("Merged data preparation (numeric conversion) completed.")
+            self.logger.info("Multi-τ data preparation (numeric conversion) completed.")
+            self._sync_legacy_views() 
             return
 
         self.EV_trajectories_stacked = prepare_mu(
@@ -239,12 +240,12 @@ class MUFITPipeline:
         else:
             self.EV_trajectories_branch2_stacked = None
         
-        # ----------------------------------------------------------
-        # Canonicalize: always populate data_store, even in non-merged mode
-        # ----------------------------------------------------------
-        # Temporary single-dataset key. Later we'll set this from tau_train_list[0]
-        # or parse from file path.
-        tau_key = 0.0
+        if self.tau_single is None:
+            raise ValueError(
+                "tau_single must be provided when data_paths_map is None (single-τ mode)."
+            )
+        
+        tau_key = float(self.tau_single)
 
         self.data_store = {
             tau_key: {
@@ -256,6 +257,7 @@ class MUFITPipeline:
                 "EV_trajectories_branch2_stacked": self.EV_trajectories_branch2_stacked,
             }
         }
+        self._sync_legacy_views(tau_key)
 
     # ==========================================================
     # helpers
@@ -324,11 +326,6 @@ class MUFITPipeline:
         num_R = len(R)
 
         tau_keys = tau_train_list
-        if (not self.merged_optimization) or (len(self.data_store) == 1 and 0.0 in self.data_store):
-            tau_keys = [0.0]
-
-        tau_anchor = tau_keys[0]
-        d_anchor = self.data_store[tau_anchor]
 
         mu_array = np.zeros((num_R, 2), dtype=float)
 
@@ -370,39 +367,6 @@ class MUFITPipeline:
 
         return mu_array, R
     
-    def _find_mu_fit_merged_linear(self, config, target_tau, branch_id):
-        """
-        LEGACY WRAPPER.
-        Prefer find_mu_fit(config, tau_train_list, branch_id).
-        """
-        # Train on all loaded taus (legacy behavior)
-        tau_train_list = sorted(self.data_store.keys())
-
-        mu_array, R, _ = self.find_mu_fit(
-            config=config,
-            tau_train_list=tau_train_list,
-            branch_id=branch_id,
-        )
-
-        # Return EV0 for target_tau if available (legacy plotting behavior)
-        if target_tau in self.data_store:
-            data_target = self.data_store[target_tau]
-        elif len(self.data_store) == 1:
-            # non-merged canonical store uses a single key (e.g. 0.0)
-            data_target = next(iter(self.data_store.values()))
-        else:
-            self.logger.warning(
-                f"Target tau {target_tau} not in training set. Returning None for EV0."
-            )
-            return mu_array, R, None
-
-        if branch_id == 1:
-            EV0_target = np.hstack(data_target["EV0"]).ravel()
-        else:
-            EV0_target = np.hstack(data_target["EV0_branch2"]).ravel()
-
-        return mu_array, R, EV0_target
-
     def _linear_mu_complex(self, config, branch_id, n, tau, w_big, sigma_big, s_ref):
         w_big = np.asarray(w_big).reshape(-1)
         sigma_big = np.asarray(sigma_big).reshape(-1)
@@ -468,10 +432,10 @@ class MUFITPipeline:
         if 1 not in self.fit_branches:
             raise ValueError("fit_branches must contain branch 1 (defines reference mode s_1).")
 
-        # Use provided taus in merged mode; in non-merged canonical store, use only 0.0
+        if self.num_acoustic_branches < 2:
+            raise ValueError("fit_branches must contain branch 2 (defines reference mode s_2).")
+
         tau_keys = tau_train_list
-        if (not self.merged_optimization) or (len(self.data_store) == 1 and 0.0 in self.data_store):
-            tau_keys = [0.0]
 
         # Deterministic anchor tau for init + EV0 return
         tau_init = float(min(tau_keys))
@@ -515,22 +479,19 @@ class MUFITPipeline:
             # μ22 init (branch 2) at tau_init
             # -----------------------------
             try:
-                if self.num_acoustic_branches >= 2 and (2 in self.fit_branches):
-                    d_init = self.data_store[tau_init]
-                    st2_init = d_init.get("EV_trajectories_branch2_stacked")
-                    ev2_obj = d_init.get("EV0_branch2")
-                    if st2_init is None or ev2_obj is None:
-                        raise ValueError("Branch-2 data missing for init_mu22.")
-                    ev2_init = np.hstack(ev2_obj).ravel()
+                d_init = self.data_store[tau_init]
+                st2_init = d_init.get("EV_trajectories_branch2_stacked")
+                ev2_obj = d_init.get("EV0_branch2")
+                ev2_init = np.hstack(ev2_obj).ravel()
 
-                    w2_init = st2_init[i, 0, :].imag
-                    sig2_init = st2_init[i, 0, :].real
-                    s2_init = ev2_init[i]
+                w2_init = st2_init[i, 0, :].imag
+                sig2_init = st2_init[i, 0, :].real
+                s2_init = ev2_init[i]
 
-                    mu22_lin = self._linear_mu_complex(
-                        config, 2, n, tau_init, w2_init, sig2_init, s_ref=s2_init
-                    )
-                    init_mu22 = self._validate_linear_mu_init(mu22_lin, 2, float(R[i]))
+                mu22_lin = self._linear_mu_complex(
+                    config, 2, n, tau_init, w2_init, sig2_init, s_ref=s2_init
+                )
+                init_mu22 = self._validate_linear_mu_init(mu22_lin, 2, float(R[i]))
             except Exception:
                 init_mu22 = None
 
@@ -539,18 +500,13 @@ class MUFITPipeline:
             # -----------------------------
             data_blocks = []
 
-            def add_blocks(t_val, st1, ev1, st2, ev2, R_val):
+            def add_blocks(i,t_val, st1, ev1, st2, ev2):
                 s_1_local = ev1[i]
-
-                if ev2 is not None:
-                    s_2_local = ev2[i]
-                else:
-                    try:
-                        s_2_local = config.w_R_table[float(R_val)]
-                    except Exception:
-                        s_2_local = config.w[1]
+                s_2_local = ev2[i]
 
                 # Branch 1
+                if st1 is None or ev1 is None:
+                    raise ValueError(f"Second-order fit requires branch-1 data but it is missing for tau={t_val}.")
                 w1 = st1[i, 0, :].imag
                 sig1 = st1[i, 0, :].real
                 data_blocks.append(
@@ -566,20 +522,19 @@ class MUFITPipeline:
                 )
 
                 # Branch 2
-                if st2 is not None and (2 in self.fit_branches):
-                    w2 = st2[i, 0, :].imag
-                    sig2 = st2[i, 0, :].real
-                    data_blocks.append(
-                        {
-                            "tag": f"tau={t_val:.4f}_b2",
-                            "tau": float(t_val),
-                            "w": w2,
-                            "sigma": sig2,
-                            "s_ref": s_2_local,
-                            "s_1": s_1_local,
-                            "s_2": s_2_local,
-                        }
-                    )
+                if st2 is None or ev2 is None:
+                    raise ValueError(f"Second-order fit requires branch-2 data but it is missing for tau={t_val}.")
+                w2 = st2[i, 0, :].imag
+                sig2 = st2[i, 0, :].real
+                data_blocks.append({
+                    "tag": f"tau={t_val:.4f}_b2",
+                    "tau": float(t_val),
+                    "w": w2,
+                    "sigma": sig2,
+                    "s_ref": s_2_local,
+                    "s_1": s_1_local,
+                    "s_2": s_2_local
+                })
 
             for t_val in tau_keys:
                 d = self.data_store[t_val]
@@ -588,11 +543,9 @@ class MUFITPipeline:
                 ev1 = np.hstack(d["EV0"]).ravel()
 
                 st2 = d.get("EV_trajectories_branch2_stacked")
-                ev2 = None
-                if st2 is not None and d.get("EV0_branch2") is not None:
-                    ev2 = np.hstack(d["EV0_branch2"]).ravel()
+                ev2 = np.hstack(d["EV0_branch2"]).ravel()
 
-                add_blocks(t_val, st1, ev1, st2, ev2, R[i])
+                add_blocks(i, t_val, st1, ev1, st2, ev2)
 
             # -----------------------------
             # Solve per-R global nonlinear LSQ
@@ -628,3 +581,28 @@ class MUFITPipeline:
         EV0_ret = np.hstack(self.data_store[tau_init]["EV0"]).ravel()
 
         return mu_array, R, EV0_ret
+    
+    def _sync_legacy_views(self, tau_view: float | None = None):
+        """
+        Compatibility shim: mirror one dataset from data_store into legacy attributes.
+        This keeps older code working, but data_store remains the source of truth.
+        """
+        if not self.data_store:
+            raise ValueError("data_store is empty; cannot sync legacy views.")
+
+        if tau_view is None:
+            tau_view = sorted(self.data_store.keys())[0]
+
+        d = self.data_store[tau_view]
+
+        # canonical grids
+        self.n = d["n"]
+        self.R = d["R"]
+
+        # legacy EV0 containers (as loaded)
+        self.EV0 = d["EV0"]
+        self.EV0_branch2 = d.get("EV0_branch2")
+
+        # legacy stacked arrays (as prepared)
+        self.EV_trajectories_stacked = d.get("EV_trajectories_stacked")
+        self.EV_trajectories_branch2_stacked = d.get("EV_trajectories_branch2_stacked")

@@ -128,14 +128,10 @@ def create_b_column_trajectory_vectorized(config, n, tau, w, sigma, s_ref):
         * n[1:]
         * np.exp(-sigma * tau)
     )
-    
 
     b = np.zeros(2*m, dtype=float)
     b[0::2] = (-C4 + C2[i]) / C1
     b[1::2] = (C3[i] - C5) / C1
-    # print("min|C1| =", np.min(np.abs(C1)))
-    # print("max|b|  =", np.max(np.abs(b)))
-
 
     return b
 

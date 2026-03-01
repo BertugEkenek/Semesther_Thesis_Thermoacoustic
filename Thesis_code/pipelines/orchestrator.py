@@ -61,7 +61,6 @@ class SolveEigenWorkflow:
             )
         if not correction:
             mu_array = 1.0
-            EV0_flat = np.hstack(self.mu_pipeline.EV0).ravel()
             R = self.mu_pipeline.R
             self.logger.info("No correction: using μ = 1.0")
             return mu_array, R

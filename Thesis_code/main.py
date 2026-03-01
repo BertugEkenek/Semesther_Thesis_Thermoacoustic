@@ -26,8 +26,6 @@ def main():
     num_acoustic_branches = 2       # Set to 2 when using two .mat files
     fit_branches = [1,2]             # Later: [1, 2] to use two branches
 
-    # --- Merged Optimization Config ---
-    merged_optimization = True       # Set to True to enable multi-tau optimization
     tau_plot = 0.007
     tau_train_list = [0.004, 0.007]   # List of tau values to merge
     
@@ -67,12 +65,11 @@ def main():
     config.mu_bake_rank_one = True
     config.mu_hard_constraint = False
 
-    if merged_optimization:
-        for t in tau_train_list:
-            t_ms = int(t * 1000)
-            path_b1 = f"./data/Mu_training_data/{config.name}/{t_ms}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={t_ms}ms.mat"
-            path_b2 = f"./data/Mu_training_data/{config.name}/{t_ms}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={t_ms}ms.mat"
-            data_paths_map[t] = {'branch1': path_b1, 'branch2': path_b2}
+    for t in tau_train_list:
+        t_ms = int(t * 1000)
+        path_b1 = f"./data/Mu_training_data/{config.name}/{t_ms}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={t_ms}ms.mat"
+        path_b2 = f"./data/Mu_training_data/{config.name}/{t_ms}ms/tax_{config.name}_second_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={t_ms}ms.mat"
+        data_paths_map[t] = {'branch1': path_b1, 'branch2': path_b2}
 
     config.data_path = f"./data/Mu_training_data/{config.name}/{int(tau_plot*1000)}ms/tax_{config.name}_first_branch_up_to_n={n_last}_with_number_of_n={number_of_n}_tau={int(tau_plot*1000)}ms.mat"
     #config.data_path = f"./data/Mu_training_data/{int(tau_plot*1000)}ms/tax_{config.name}.mat"
@@ -106,8 +103,8 @@ def main():
         num_acoustic_branches=num_acoustic_branches,
         fit_branches=fit_branches,
         branch2_data_path=branch2_data_path,
-        merged_optimization=merged_optimization,
         data_paths_map=data_paths_map,
+        tau_single=tau_plot  # For single-branch
     )
 
 
