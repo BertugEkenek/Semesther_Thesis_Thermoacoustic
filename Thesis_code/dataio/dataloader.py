@@ -34,58 +34,62 @@ def load_data(
 
 
 def analyze_trajectories_sizes(trajectories, show_position=False, show_max_min=False):
-    """
-    Analyze the sizes of trajectories and identify entries smaller than the maximum size.
-    
-    Args:
-        trajectories: 3D numpy array of object arrays to analyze
-        
-    Returns:
-        tuple: (smaller_entries, max_size, min_size)
-            - smaller_entries: list of tuples (i,j,k,size) for entries smaller than max_size
-            - max_size: maximum size found across all entries
-            - min_size: minimum size found across all entries
-    """
-    max_size = 0
-    min_size = float('inf')
-    smaller_entries = []  # Will store tuples of (i,j,k,size) for entries smaller than max_size
-    
-    # First pass to find max_size
-    for i in range(trajectories.shape[0]):
-        for j in range(trajectories.shape[1]):
-            for k in range(trajectories.shape[2]):
-                entry = trajectories[i,j,k]
-                if entry.size == 0:  # Skip empty arrays
-                    continue
-                squeezed = entry.squeeze()
-                # Handle both 1D and multi-dimensional arrays
-                current_size = squeezed.shape[0] if len(squeezed.shape) > 0 else 0
-                if current_size > 0:  # Only consider non-empty arrays
-                    max_size = max(max_size, current_size)
-                    min_size = min(min_size, current_size)
-    
-    # Second pass to collect smaller entries
-    for i in range(trajectories.shape[0]):
-        for j in range(trajectories.shape[1]):
-            for k in range(trajectories.shape[2]):
-                entry = trajectories[i,j,k]
-                if entry.size == 0:  # Skip empty arrays
-                    continue
-                squeezed = entry.squeeze()
-                current_size = squeezed.shape[0] if len(squeezed.shape) > 0 else 0
-                if 0 < current_size < max_size:
-                    smaller_entries.append((i, j, k, current_size))
-    if show_max_min:
-        logger.info("\nChecking sizes ...")
-        logger.info(f"Maximum size: {max_size}")
-        logger.info(f"Minimum size: {min_size}")
-        logger.info(f"Found {len(smaller_entries)} entries smaller than maximum size")
-    if show_position and smaller_entries:
-        logger.info("\nSmaller entries (i,j,k,size):")
-        for entry in smaller_entries:
-            logger.info(f"    Position ({entry[0]},{entry[1]},{entry[2]}): {entry[3]}")
+        max_size = 0
+        min_size = float("inf")
+        smaller_entries = []
 
-    return smaller_entries, max_size, min_size
+        def _entry_len(entry) -> int:
+            if entry is None:
+                return 0
+            if isinstance(entry, np.ndarray):
+                if entry.size == 0:
+                    return 0
+                squeezed = entry.squeeze()
+                if squeezed.ndim == 0:
+                    return 1
+                return int(squeezed.shape[0])
+
+            arr = np.asarray(entry)
+            if arr.ndim == 0:
+                return 1
+            if arr.size == 0:
+                return 0
+            return int(arr.shape[0])
+
+        # First pass: max/min
+        for i in range(trajectories.shape[0]):
+            for j in range(trajectories.shape[1]):
+                for k in range(trajectories.shape[2]):
+                    s = _entry_len(trajectories[i, j, k])
+                    if s > 0:
+                        max_size = max(max_size, s)
+                        min_size = min(min_size, s)
+
+        # If nothing non-empty was found, fail early (or choose min_size=0)
+        if max_size == 0:
+            raise ValueError("All trajectory entries are empty (max_size=0). Check MAT EV content.")
+
+        # Second pass: collect smaller entries
+        for i in range(trajectories.shape[0]):
+            for j in range(trajectories.shape[1]):
+                for k in range(trajectories.shape[2]):
+                    s = _entry_len(trajectories[i, j, k])
+                    if 0 < s < max_size:
+                        smaller_entries.append((i, j, k, s))
+
+        if show_max_min:
+            logger.info("\nChecking sizes ...")
+            logger.info(f"Maximum size: {max_size}")
+            logger.info(f"Minimum size: {min_size}")
+            logger.info(f"Found {len(smaller_entries)} entries smaller than maximum size")
+
+        if show_position and smaller_entries:
+            logger.info("\nSmaller entries (i,j,k,size):")
+            for entry in smaller_entries:
+                logger.info(f"    Position ({entry[0]},{entry[1]},{entry[2]}): {entry[3]}")
+
+        return smaller_entries, max_size, min_size
+
 
 def reshape_EV_trajectories(EV_trajectories, min_size):
     """

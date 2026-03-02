@@ -59,10 +59,10 @@ def initialize_plot(
 
         if branch_id == 1:
             s_ref = EV0_branch1[index]
-        else:
-            if EV0_branch2 is None:
-                raise ValueError("Branch-2 EV0 not available.")
+        elif branch_id == 2:
             s_ref = EV0_branch2[index]
+        else:
+            raise ValueError(f"Invalid branch_id {branch_id} for linear μ plotting.")
 
         config.w[branch_id - 1] = s_ref
         logger.info(
@@ -76,12 +76,7 @@ def initialize_plot(
         # -------------------------------
         s1 = EV0_branch1[index]
         config.w[0] = s1
-
-        if EV0_branch2 is not None:
-            s2 = EV0_branch2[index]
-        else:
-            s2 = config.w[1]
-
+        s2 = EV0_branch2[index]
         config.w[1] = s2
 
         logger.info(

@@ -42,23 +42,22 @@ class SolveEigenWorkflow:
         mu_order: str,
         flame_model_approximator: str,
         tau_train_list: list[float],
-        order: int,
         enforce_symmetry: bool,
         save_mu: bool,
         use_saved_mu: bool,
     ):
-        """
-        Compute or load μ-array and corresponding R.
-        """
         if not tau_train_list:
             raise ValueError("tau_train_list must be non-empty.")
 
         if len(tau_train_list) == 1:
-            tau_tag = f"{int(tau_train_list[0] * 1000)}ms"
+            tau_tag = f"{int(round(tau_train_list[0] * 1000))}ms"
         else:
             tau_tag = "train_" + "_".join(
-                f"{int(t * 1000)}ms" for t in sorted(float(t) for t in tau_train_list)
+                f"{int(round(t * 1000))}ms" for t in sorted(float(t) for t in tau_train_list)
             )
+
+        EV0_flat = None  # <-- ensures save_mu path never references an undefined variable
+
         if not correction:
             mu_array = 1.0
             R = self.mu_pipeline.R
@@ -76,42 +75,29 @@ class SolveEigenWorkflow:
                     res = lin_results[branch_id]
                     mu_array = res["mu"]
                     R = res["R"]
-
-                    self.logger.info(
-                        f"Linear μ-fit completed for branch {branch_id} only."
-                    )
+                    self.logger.info(f"Linear μ-fit completed for branch {branch_id} only.")
                 else:
                     mu_array = lin_results
                     R = next(iter(lin_results.values()))["R"]
-                    EV0_flat = None
-
                     self.logger.info(
                         f"Linear μ-fit completed for branches {list(lin_results.keys())}."
                     )
 
             elif mu_order == "Second":
+                # NEW SIGNATURE: (config, tau_train_list, enforce_symmetry)
                 mu_array, R, EV0_flat = self.mu_pipeline.find_mu_fit_second_order(
-                    self.config, tau_train_list, order, enforce_symmetry
+                    self.config, tau_train_list, enforce_symmetry
                 )
             else:
                 raise ValueError(f"Invalid mu_order: {mu_order}")
 
-            if save_mu:
-                self._save_mu_values(
-                    mu_array,
-                    R,
-                    EV0_flat,
-                    flame_model_approximator,
-                    tau_tag,
-                )
+            if save_mu: # should give an error right now check it later
+                self._save_mu_values(mu_array, R, EV0_flat, flame_model_approximator, tau_tag)
+
         else:
-            mu_array, R, EV0_flat = self._load_mu_values(
-                flame_model_approximator,
-                tau_tag,
-            )
+            mu_array, R, EV0_flat = self._load_mu_values(flame_model_approximator, tau_tag)
 
         return mu_array, R
-
     # ----------------------------------------------------------
     def _save_mu_values(self, mu_array, R, EV0_flat, flame_model_approximator, tau_tag: str):
         save_dir = "./Results/Mu_values"
@@ -219,7 +205,6 @@ class SolveEigenWorkflow:
             mu_order=mu_order,
             flame_model_approximator=F_model.__name__,
             tau_train_list=tau_train_list,
-            order=order,
             enforce_symmetry=enforce_symmetry,
             save_mu=save_mu,
             use_saved_mu=use_saved_mu,
@@ -227,14 +212,19 @@ class SolveEigenWorkflow:
         # ----------------------------------------------------------
         # Plot-time EV0 must come from tau_plot dataset
         # ----------------------------------------------------------
-        tau_key_plot = tau_plot if tau_plot in self.mu_pipeline.data_store else next(iter(self.mu_pipeline.data_store.keys()))
-
-        d_plot = self.mu_pipeline.data_store[tau_key_plot]
-        EV0_flat_plot = np.hstack(d_plot["EV0"]).ravel()
+        # Plot-time EV0 must come from tau_plot dataset (canonical tau_ms key)
+        tau_key_plot = (
+            int(round(tau_plot * 1000))
+            if int(round(tau_plot * 1000)) in self.mu_pipeline.data_store
+            else next(iter(self.mu_pipeline.data_store.keys()))
+            )
+        EV0_branch1_flat_plot = None
+        if 1 in self.mu_pipeline.fit_branches:
+            EV0_branch1_flat_plot = self.mu_pipeline.ev0_flat(branch_id=1, tau=tau_key_plot)
 
         EV0_branch2_flat_plot = None
-        if d_plot.get("EV0_branch2") is not None:
-            EV0_branch2_flat_plot = np.hstack(d_plot["EV0_branch2"]).ravel()
+        if 2 in self.mu_pipeline.fit_branches:
+            EV0_branch2_flat_plot = self.mu_pipeline.ev0_flat(branch_id=2, tau=tau_key_plot)
 
         # ----------------------------------------------------------
         # 2) Prepare main eigenvalue plot
@@ -245,7 +235,7 @@ class SolveEigenWorkflow:
             R_value,
             mu_order,
             mu_array,
-            EV0_flat_plot,
+            EV0_branch1_flat_plot,
             EV0_branch2_flat_plot,
             self.config,
             tau_plot,

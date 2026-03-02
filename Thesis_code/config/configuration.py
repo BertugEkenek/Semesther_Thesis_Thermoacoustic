@@ -3,7 +3,6 @@ import copy
 class Configuration:
     def __init__(self, config_type):
         self.name = config_type
-        self.data_path=None
         self.lsq_method = "trf"        # or "lm"
 
         
