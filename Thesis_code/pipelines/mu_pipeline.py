@@ -56,14 +56,12 @@ class MUFITPipeline:
         self,
         config: object,
         # single-τ MAT/TXT (optional)
-        branch1_data_path: str | None = None,
-        branch2_data_path: str | None = None,
         txt_solution_path: str | None = None,
         use_txt_solutions: bool = False,
 
         # multi-τ MAT map (optional)
         data_paths_map: dict[float | int, dict[str, str]] | None = None,
-        
+
         # behavior
         fit_branches: list[int] | None = None,
         enforce_symmetry: bool = True,
@@ -71,8 +69,6 @@ class MUFITPipeline:
         self.config = config
         self.logger = logger
 
-        self.branch1_data_path = branch1_data_path
-        self.branch2_data_path = branch2_data_path
         self.txt_solution_path = txt_solution_path
         self.use_txt_solutions = bool(use_txt_solutions)
 
@@ -100,24 +96,17 @@ class MUFITPipeline:
         Loads raw MAT/TXT data for the requested taus into data_store.
         - If data_paths_map is provided: loads all taus found in data_paths_map
           (and validates tau_train_list is a subset of those keys).
-        - Else: single-τ mode: tau_train_list must have length 1 and uses branch1_data_path/branch2_data_path or TXT.
+        - If data_paths_map is None: does nothing (caller must load manually).
         """
         tau_keys = [_tau_to_key_ms(t) for t in tau_train_list]
         if not tau_keys:
             raise ValueError("tau_train_list must be non-empty.")
 
-        if self.data_paths_map:
-            self._load_multi_tau_from_map()
-            missing = [k for k in tau_keys if k not in self.data_store]
-            if missing:
-                loaded = sorted(self.data_store.keys())
-                raise KeyError(f"Requested taus (ms) not loaded: {missing}. Loaded: {loaded}")
-        else:
-            if len(tau_keys) != 1:
-                raise ValueError(
-                    "Single-τ mode requires tau_train_list of length 1 when data_paths_map is None."
-                )
-            self._load_single_tau(tau_key_ms=tau_keys[0])
+        self._load_multi_tau_from_map()
+        missing = [k for k in tau_keys if k not in self.data_store]
+        if missing:
+            loaded = sorted(self.data_store.keys())
+            raise KeyError(f"Requested taus (ms) not loaded: {missing}. Loaded: {loaded}")
 
         # After raw load, reshape per tau/branch
         self._reshape_all()
@@ -211,80 +200,6 @@ class MUFITPipeline:
 
             self.data_store[tau_ms] = d
 
-    def _load_single_tau(self, tau_key_ms: int):
-        tau_s = _key_ms_to_tau(tau_key_ms)
-        self.logger.info(f"Loading single-τ dataset for tau={tau_s:.6f}s (key={tau_key_ms}ms)")
-
-        d = {
-            "n": None,
-            "R": None,
-
-            "EV0_b1": None,
-            "EV_traj_b1": None,
-            "min_size_b1": None,
-
-            "EV0_b2": None,
-            "EV_traj_b2": None,
-            "min_size_b2": None,
-        }
-
-        if self.use_txt_solutions:
-            if not self.txt_solution_path:
-                raise ValueError("txt_solution_path must be set when use_txt_solutions=True.")
-
-            # Branch 1 TXT
-            if 1 in self.fit_branches:
-                (n1, R1, EV0_1, EV_traj_1, _, _, min1) = load_txt_solutions(
-                    self.txt_solution_path + "_branch1.txt"
-                )
-                d["n"], d["R"] = n1, R1
-                d["EV0_b1"], d["EV_traj_b1"], d["min_size_b1"] = EV0_1, EV_traj_1, min1
-
-            # Branch 2 TXT
-            if 2 in self.fit_branches:
-                (n2, R2, EV0_2, EV_traj_2, _, _, min2) = load_txt_solutions(
-                    self.txt_solution_path + "_branch2.txt"
-                )
-                if d["n"] is None:
-                    d["n"], d["R"] = n2, R2
-                else:
-                    if not np.allclose(d["n"], n2) or not np.allclose(d["R"], R2):
-                        raise ValueError("TXT branch 1 and 2 have different grids.")
-                d["EV0_b2"], d["EV_traj_b2"], d["min_size_b2"] = EV0_2, EV_traj_2, min2
-
-        else:
-            # MAT single-τ uses branch1_data_path/branch2_data_path
-            if (1 in self.fit_branches) and (not self.branch1_data_path):
-                raise ValueError("branch1_data_path must be provided to load branch 1 in MAT mode.")
-            if (2 in self.fit_branches) and (not self.branch2_data_path):
-                raise ValueError("branch2_data_path must be provided to load branch 2 in MAT mode.")
-
-            if 1 in self.fit_branches:
-                (n1, R1, EV0_1, EV_traj_1, _, _, min1) = load_data(
-                    self.branch1_data_path, show_position=False, show_max_min=False
-                )
-                d["n"], d["R"] = n1, R1
-                d["EV0_b1"], d["EV_traj_b1"], d["min_size_b1"] = EV0_1, EV_traj_1, min1
-
-            if 2 in self.fit_branches:
-                (n2, R2, EV0_2, EV_traj_2, _, _, min2) = load_data(
-                    self.branch2_data_path, show_position=False, show_max_min=False
-                )
-                if d["n"] is None:
-                    d["n"], d["R"] = n2, R2
-                else:
-                    if not np.allclose(d["n"], n2) or not np.allclose(d["R"], R2):
-                        raise ValueError("MAT branch 1 and 2 have different grids.")
-                d["EV0_b2"], d["EV_traj_b2"], d["min_size_b2"] = EV0_2, EV_traj_2, min2
-
-        if d["n"] is None or d["R"] is None:
-            raise ValueError("Single-τ load produced no data; check fit_branches and provided paths.")
-
-        # set global grids
-        self.n = d["n"]
-        self.R = d["R"]
-
-        self.data_store = {tau_key_ms: d}
 
     # ==========================================================
     # Reshape helper
@@ -312,7 +227,7 @@ class MUFITPipeline:
                 d["EV_traj_b2_reshaped"] = None
 
     # ==========================================================
-    # Convenience accessors
+    # helper
     # ==========================================================
     def get_tau_keys_ms(self) -> list[int]:
         return sorted(self.data_store.keys())
