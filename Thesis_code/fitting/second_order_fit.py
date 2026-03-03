@@ -17,50 +17,6 @@ def cond_safe(A) -> float:
     except Exception:
         return float(np.inf)
     
-# def build_n_weights(n, weights=None, *, kind="exp", beta=2.0, power=1.0, eps=1e-6):
-#     """
-#     Returns weights for samples corresponding to n[1:].
-#     Output shape: (m,) where m = len(n)-1.
-#     Higher weights for earlier/smaller n.
-
-#     weights can be:
-#       - None: use rule (kind,beta/power)
-#       - scalar: constant weight
-#       - array-like of shape (m,)
-#       - callable: weights = f(n_mid) -> (m,)
-#     """
-#     n = np.asarray(n).ravel()
-#     m = n.size - 1
-#     n_mid = n[1:]
-
-#     if weights is None:
-#         if kind == "exp":
-#             # exp weighting in n-value (stable)
-#             x = n_mid - float(n_mid.min())
-#             w = np.exp(-beta * x / (float(x.max()) + eps if x.max() > 0 else 1.0))
-#         elif kind == "power":
-#             w = 1.0 / np.power(n_mid + eps, power)
-#         elif kind == "index_exp":
-#             k = np.arange(m)
-#             w = np.exp(-beta * k)
-#         else:
-#             raise ValueError(f"Unknown weight kind: {kind}")
-#         return w.astype(float)
-
-#     if np.isscalar(weights):
-#         return np.full(m, float(weights), float)
-
-#     if callable(weights):
-#         w = np.asarray(weights(n_mid), float).ravel()
-#         if w.size != m:
-#             raise ValueError(f"Callable weights must return shape ({m},), got {w.shape}")
-#         return w
-
-#     w = np.asarray(weights, float).ravel()
-#     if w.size != m:
-#         raise ValueError(f"weights must have shape ({m},), got {w.shape}")
-#     return w
-
 def p_to_q_from_previous(p_prev, enforce_symmetry, hard=False, bake=False):
     """
     Convert solved p-vector from previous R into q-space initialization.
@@ -160,7 +116,7 @@ def _build_M_all_and_b_all(config, tau, w, sigma, s_ref, s_1, s_2, n):
       b_all: (m, 2)
     """
     
-    m = len(n) - 1
+    m = len(n) - 1 # exclude n=0 sample which is not used in fitting
     idx = np.arange(m)
 
     alphaK1 = config.alpha[0] * config.K
@@ -238,8 +194,7 @@ def _build_M_all_and_b_all(config, tau, w, sigma, s_ref, s_1, s_2, n):
                                Cin**2*s**2 - Crn**2*s**2 +
                                4*Cin*Crn*c*s)
     M_all[:, 1, 10] = M_all[:, 1, 9]
-    M_all[:, 1, 11] = 2*C12*C21*(Cin*Crn*c**2 - Cin*Crn*s**2 +
-                                 Cin**2*c*s - Crn**2*c*s)
+    M_all[:, 1, 11] = - M_all[:, 1, 8]
 
     # --- RHS constants moved to b ---
     b_all[:, 0] = -(
@@ -262,7 +217,7 @@ def _collapse_12_to_identifiable(M_all, config):
       b_2d:   (N,)
       meta:   dict
     """
-
+    # Move this in to _build_M_all_and_b_all
     # 12 → 8 (STRUCTURAL)
     m = M_all.shape[0]
     M8 = np.zeros((m, 2, 8), float)
@@ -271,7 +226,7 @@ def _collapse_12_to_identifiable(M_all, config):
     M8[:, :, 5] = 0.5 * (M_all[:, :, 5] + M_all[:, :, 6])   # Im(mu11*mu22)
     M8[:, :, 6] = 0.5 * (M_all[:, :, 8] - M_all[:, :, 11])  # Re(mu12*mu21)
     M8[:, :, 7] = 0.5 * (M_all[:, :, 9] + M_all[:, :, 10])  # Im(mu12*mu21)
-
+    # I should intorduce bake and hard or any other structural flags in build_M_all_and_b_all
     bake = bool(getattr(config, "mu_bake_rank_one", False))
     if bake:
         # 8 → 6: merge diagonal-product and coupling-product blocks
@@ -296,6 +251,7 @@ def q_to_mu_complex(q, enforce_symmetry, hard_constraint=False, sign=+1, bake=Fa
     """
     if hard_constraint:
         a11, phi11, a22, phi22 = q
+
         mu11 = np.exp(a11) * (np.cos(phi11) + 1j*np.sin(phi11))
         mu22 = np.exp(a22) * (np.cos(phi22) + 1j*np.sin(phi22))
 
@@ -310,10 +266,13 @@ def q_to_mu_complex(q, enforce_symmetry, hard_constraint=False, sign=+1, bake=Fa
     if bake:
         # only diagonals in q; coupling is implied
         a11, phi11, a22, phi22 = q
+
         mu11 = np.exp(a11) * (np.cos(phi11) + 1j*np.sin(phi11))
         mu22 = np.exp(a22) * (np.cos(phi22) + 1j*np.sin(phi22))
+
         a12 = 0.5 * (a11 + a22)
         phi12 = 0.5 * (phi11 + phi22)
+
         mu12 = sign * np.exp(a12) * (np.cos(phi12) + 1j*np.sin(phi12))
         mu21 = mu12
         return mu11, mu22, mu12, mu21
@@ -340,7 +299,7 @@ def q_to_p(q, enforce_symmetry, hard_constraint=False, sign=+1, bake=False):
     For bake: still returns the same p-layout (so upstream stays consistent).
     """
     mu11, mu22, mu12, mu21 = q_to_mu_complex(
-        q, enforce_symmetry, hard_constraint=hard_constraint, sign=sign, bake=bake
+        q, enforce_symmetry, hard_constraint, sign, bake
     )
 
     if enforce_symmetry:
@@ -585,9 +544,6 @@ def solve_mu_per_R(
             else:
                 p_init[4:8] = 0.0
 
-    # if prev_p_opt is not None:
-    #     p_init = None
-
     lam_target = float(getattr(config, "mu_modelIII_lambda", 0.0))
     lam_init   = float(getattr(config, "mu_init_lambda", 0.0))
     lam_one = float(getattr(config, "mu_one_target_lambda", 0.0))
@@ -721,3 +677,50 @@ def solve_mu_per_R(
         info["block_info"] = block_info
 
     return p_opt, info
+
+
+# functions may be added later if needed
+
+# def build_n_weights(n, weights=None, *, kind="exp", beta=2.0, power=1.0, eps=1e-6):
+#     """
+#     Returns weights for samples corresponding to n[1:].
+#     Output shape: (m,) where m = len(n)-1.
+#     Higher weights for earlier/smaller n.
+
+#     weights can be:
+#       - None: use rule (kind,beta/power)
+#       - scalar: constant weight
+#       - array-like of shape (m,)
+#       - callable: weights = f(n_mid) -> (m,)
+#     """
+#     n = np.asarray(n).ravel()
+#     m = n.size - 1
+#     n_mid = n[1:]
+
+#     if weights is None:
+#         if kind == "exp":
+#             # exp weighting in n-value (stable)
+#             x = n_mid - float(n_mid.min())
+#             w = np.exp(-beta * x / (float(x.max()) + eps if x.max() > 0 else 1.0))
+#         elif kind == "power":
+#             w = 1.0 / np.power(n_mid + eps, power)
+#         elif kind == "index_exp":
+#             k = np.arange(m)
+#             w = np.exp(-beta * k)
+#         else:
+#             raise ValueError(f"Unknown weight kind: {kind}")
+#         return w.astype(float)
+
+#     if np.isscalar(weights):
+#         return np.full(m, float(weights), float)
+
+#     if callable(weights):
+#         w = np.asarray(weights(n_mid), float).ravel()
+#         if w.size != m:
+#             raise ValueError(f"Callable weights must return shape ({m},), got {w.shape}")
+#         return w
+
+#     w = np.asarray(weights, float).ravel()
+#     if w.size != m:
+#         raise ValueError(f"weights must have shape ({m},), got {w.shape}")
+#     return w

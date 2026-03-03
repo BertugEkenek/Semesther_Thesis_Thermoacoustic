@@ -380,8 +380,8 @@ class MUFITPipeline:
                 # linear init helper (re-using your linear regression)
                 def _linear_mu_complex(branch_id, tau_s, w_vec, sig_vec, s_ref):
                     cfg = config.get_branch_config(branch_id)
-                    A = linfit.build_A(n, tau_s, w_vec, sig_vec, s_ref=s_ref)
-                    b = linfit.build_b(cfg, n, tau_s, w_vec, sig_vec, s_ref=s_ref)
+                    A = linfit.build_A(n, tau_s, w_vec, sig_vec, s_ref)
+                    b = linfit.build_b(cfg, n, tau_s, w_vec, sig_vec, s_ref)
                     mu_re_im = linfit.regression(A, b, check_condition_number=True, quiet=True)
                     return mu_re_im[0] + 1j * mu_re_im[1]
 
