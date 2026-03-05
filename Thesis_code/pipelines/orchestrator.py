@@ -42,7 +42,6 @@ class SolveEigenWorkflow:
         mu_order: str,
         flame_model_approximator: str,
         tau_train_list: list[float],
-        enforce_symmetry: bool,
         save_mu: bool,
         use_saved_mu: bool,
     ):
@@ -56,7 +55,7 @@ class SolveEigenWorkflow:
                 f"{int(round(t * 1000))}ms" for t in sorted(float(t) for t in tau_train_list)
             )
 
-        EV0_flat = None  # <-- ensures save_mu path never references an undefined variable
+        EV0_flat = None  # ensures save_mu path never references undefined variable
 
         if not correction:
             mu_array = 1.0
@@ -84,20 +83,26 @@ class SolveEigenWorkflow:
                     )
 
             elif mu_order == "Second":
-                # NEW SIGNATURE: (config, tau_train_list, enforce_symmetry)
+                if not hasattr(self.config, "mu_fit_strategy"):
+                    raise AttributeError(
+                        "Second-order μ-fit requires config.mu_fit_strategy "
+                        "(e.g. 'rank1_sym', 'sym_only', 'none', 'rank1_mag_phasefree')."
+                    )
+
                 mu_array, R, EV0_flat = self.mu_pipeline.find_mu_fit_second_order(
-                    self.config, tau_train_list, enforce_symmetry
+                    self.config, tau_train_list
                 )
             else:
                 raise ValueError(f"Invalid mu_order: {mu_order}")
 
-            if save_mu: # should give an error right now check it later
+            if save_mu:
                 self._save_mu_values(mu_array, R, EV0_flat, flame_model_approximator, tau_tag)
 
         else:
             mu_array, R, EV0_flat = self._load_mu_values(flame_model_approximator, tau_tag)
 
         return mu_array, R
+
     # ----------------------------------------------------------
     def _save_mu_values(self, mu_array, R, EV0_flat, flame_model_approximator, tau_tag: str):
         save_dir = "./Results/Mu_values"
@@ -115,12 +120,14 @@ class SolveEigenWorkflow:
         ev0_path = os.path.join("./data", tau_tag)
         os.makedirs(ev0_path, exist_ok=True)
 
-        np.savetxt(
-            os.path.join(ev0_path, f"{self.config.name}_EV0_values"),
-            EV0_flat.astype(str),
-            fmt="%s",
-            delimiter=",",
-        )
+        # For linear case EV0_flat may be None; guard it
+        if EV0_flat is not None:
+            np.savetxt(
+                os.path.join(ev0_path, f"{self.config.name}_EV0_values"),
+                EV0_flat.astype(str),
+                fmt="%s",
+                delimiter=",",
+            )
 
         np.savetxt(
             os.path.join(ev0_path, f"{self.config.name}_R_values"),
@@ -129,8 +136,7 @@ class SolveEigenWorkflow:
             delimiter=",",
         )
 
-        self.logger.info(f"Saved μ-array, EV0, and R (tag={tau_tag}).")
-
+        self.logger.info(f"Saved μ-array, EV0 (if available), and R (tag={tau_tag}).")
 
     def _load_mu_values(self, flame_model_approximator, tau_tag: str):
         base = os.path.join(
@@ -142,11 +148,12 @@ class SolveEigenWorkflow:
 
         ev0_path = os.path.join("./data", tau_tag)
 
-        EV0_flat = np.loadtxt(
-            os.path.join(ev0_path, f"{self.config.name}_EV0_values"),
-            dtype=complex,
-            delimiter=",",
-        )
+        # EV0 may not exist for linear case; handle gracefully
+        ev0_file = os.path.join(ev0_path, f"{self.config.name}_EV0_values")
+        if os.path.exists(ev0_file):
+            EV0_flat = np.loadtxt(ev0_file, dtype=complex, delimiter=",")
+        else:
+            EV0_flat = None
 
         R = np.loadtxt(
             os.path.join(ev0_path, f"{self.config.name}_R_values"),
@@ -154,8 +161,9 @@ class SolveEigenWorkflow:
             delimiter=",",
         )
 
-        self.logger.info(f"Loaded μ-array, EV0, and R from disk (tag={tau_tag}).")
+        self.logger.info(f"Loaded μ-array, EV0 (if available), and R from disk (tag={tau_tag}).")
         return mu_array, R, EV0_flat
+
     # ----------------------------------------------------------
     def run(
         self,
@@ -177,7 +185,6 @@ class SolveEigenWorkflow:
         use_saved_mu: bool,
         save_solution: bool,
         use_txt_solutions: bool,
-        enforce_symmetry: bool,
         nprandomsigma: float,
         comparison: bool,
     ):
@@ -205,19 +212,19 @@ class SolveEigenWorkflow:
             mu_order=mu_order,
             flame_model_approximator=F_model.__name__,
             tau_train_list=tau_train_list,
-            enforce_symmetry=enforce_symmetry,
             save_mu=save_mu,
             use_saved_mu=use_saved_mu,
         )
+
         # ----------------------------------------------------------
         # Plot-time EV0 must come from tau_plot dataset
         # ----------------------------------------------------------
-        # Plot-time EV0 must come from tau_plot dataset (canonical tau_ms key)
         tau_key_plot = (
             int(round(tau_plot * 1000))
             if int(round(tau_plot * 1000)) in self.mu_pipeline.data_store
             else next(iter(self.mu_pipeline.data_store.keys()))
-            )
+        )
+
         EV0_branch1_flat_plot = None
         if 1 in self.mu_pipeline.fit_branches:
             EV0_branch1_flat_plot = self.mu_pipeline.ev0_flat(branch_id=1, tau=tau_key_plot)
@@ -241,7 +248,6 @@ class SolveEigenWorkflow:
             tau_plot,
             filename,
             correction,
-            enforce_symmetry,
             branch_id=plot_branch_id,
         )
 
@@ -288,7 +294,6 @@ class SolveEigenWorkflow:
             Galerkin,
             window,
             correction,
-            enforce_symmetry,
             F_model.__name__,
             comparison,
         )
@@ -310,18 +315,17 @@ class SolveEigenWorkflow:
         # 6) Finalize main figure
         # ----------------------------------------------------------
         ax.legend()
+
         # ----------------------------------------------------------
         # 7) SAVE MAIN FIGURE *BEFORE* ANY OTHER PLOTS
         # ----------------------------------------------------------
         if save_fig:
-            # save_path is already a FULL file path → do NOT rebuild it
             fig.savefig(
                 save_path,
                 dpi=600,
                 bbox_inches="tight",
                 pad_inches=0.2,
             )
-
             self.logger.info(f"Main eigenvalue figure saved to: {save_path}")
 
         # ----------------------------------------------------------
@@ -332,7 +336,6 @@ class SolveEigenWorkflow:
         #     R=R,
         #     config=self.config,
         #     mu_pipeline=self.mu_pipeline,
-        #     enforce_symmetry=enforce_symmetry,
         #     show_fig=show_fig,
         #     save_fig=save_fig,
         #     fig_dir="./Results/Figures",

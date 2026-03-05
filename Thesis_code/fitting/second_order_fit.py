@@ -16,33 +16,7 @@ def cond_safe(A) -> float:
         return float(np.linalg.cond(A))
     except Exception:
         return float(np.inf)
-    
-def p_to_q_from_previous(p_prev, enforce_symmetry, hard=False, bake=False):
-    """
-    Convert solved p-vector from previous R into q-space initialization.
-    Returns q0 array.
-    """
-    if hard or bake:
-        # only diagonals exist
-        mur11, mui11, mur22, mui22 = p_prev[:4]
-        a11, ph11 = complex_to_q(mur11 + 1j * mui11)
-        a22, ph22 = complex_to_q(mur22 + 1j * mui22)
-        return np.array([a11, ph11, a22, ph22], float)
 
-    if enforce_symmetry:
-        mur11, mui11, mur22, mui22, mur12, mui12 = p_prev
-        a11, ph11 = complex_to_q(mur11 + 1j * mui11)
-        a22, ph22 = complex_to_q(mur22 + 1j * mui22)
-        a12, ph12 = complex_to_q(mur12 + 1j * mui12)
-        return np.array([a11, ph11, a22, ph22, a12, ph12], float)
-
-    # full (8 dof)
-    mur11, mui11, mur22, mui22, mur12, mui12, mur21, mui21 = p_prev
-    a11, ph11 = complex_to_q(mur11 + 1j * mui11)
-    a22, ph22 = complex_to_q(mur22 + 1j * mui22)
-    a12, ph12 = complex_to_q(mur12 + 1j * mui12)
-    a21, ph21 = complex_to_q(mur21 + 1j * mui21)
-    return np.array([a11, ph11, a22, ph22, a12, ph12, a21, ph21], float)
 
 def svd_rank(A, rel_thresh=1e-10):
     """
@@ -66,6 +40,108 @@ def complex_to_q(mu: complex):
     """Map complex μ to (log|μ|, arg(μ))."""
     r = max(abs(mu), 1e-12)
     return np.log(r), np.arctan2(mu.imag, mu.real)
+
+
+def _cplx_from_a_phi(a, phi):
+    return np.exp(a) * (np.cos(phi) + 1j * np.sin(phi))
+
+
+# ============================================================
+# Strategies (config.mu_fit_strategy)
+# ============================================================
+
+def q_to_p_rank1_sym(q, sign=+1):
+    # q = [a11, ph11, a22, ph22], coupling implied, mu12=mu21, sign scanned
+    a11, ph11, a22, ph22 = q
+    mu11 = _cplx_from_a_phi(a11, ph11)
+    mu22 = _cplx_from_a_phi(a22, ph22)
+    a12 = 0.5 * (a11 + a22)
+    ph12 = 0.5 * (ph11 + ph22)
+    mu12 = sign * _cplx_from_a_phi(a12, ph12)
+    return np.array([mu11.real, mu11.imag, mu22.real, mu22.imag, mu12.real, mu12.imag], float)
+
+
+def q_to_p_sym_only(q):
+    # q = [a11, ph11, a22, ph22, a12, ph12], mu21=mu12
+    a11, ph11, a22, ph22, a12, ph12 = q
+    mu11 = _cplx_from_a_phi(a11, ph11)
+    mu22 = _cplx_from_a_phi(a22, ph22)
+    mu12 = _cplx_from_a_phi(a12, ph12)
+    return np.array([mu11.real, mu11.imag, mu22.real, mu22.imag, mu12.real, mu12.imag], float)
+
+
+def q_to_p_none(q):
+    # q = [a11, ph11, a22, ph22, a12, ph12, a21, ph21]
+    a11, ph11, a22, ph22, a12, ph12, a21, ph21 = q
+    mu11 = _cplx_from_a_phi(a11, ph11)
+    mu22 = _cplx_from_a_phi(a22, ph22)
+    mu12 = _cplx_from_a_phi(a12, ph12)
+    mu21 = _cplx_from_a_phi(a21, ph21)
+    return np.array(
+        [mu11.real, mu11.imag, mu22.real, mu22.imag, mu12.real, mu12.imag, mu21.real, mu21.imag],
+        float
+    )
+
+
+def q_to_p_rank1_mag_phasefree(q):
+    # q = [a11, ph11, a22, ph22, ph12, ph21], coupling magnitude implied, phases free
+    a11, ph11, a22, ph22, ph12, ph21 = q
+    mu11 = _cplx_from_a_phi(a11, ph11)
+    mu22 = _cplx_from_a_phi(a22, ph22)
+
+    a12 = 0.5 * (a11 + a22)  # shared coupling log-mag
+    mu12 = _cplx_from_a_phi(a12, ph12)
+    mu21 = _cplx_from_a_phi(a12, ph21)
+
+    return np.array(
+        [mu11.real, mu11.imag, mu22.real, mu22.imag, mu12.real, mu12.imag, mu21.real, mu21.imag],
+        float
+    )
+
+
+STRATEGIES = {
+    # 1) rank_one + mu12=mu21
+    "rank1_sym": dict(q_dim=4, symmetric=True, sign_scan=True),
+
+    # 2) rank_one + |mu12| = |mu21|, phase free
+    "rank1_mag_phasefree": dict(q_dim=6, symmetric=False, sign_scan=False),
+
+    # 3) no constraint
+    "none": dict(q_dim=8, symmetric=False, sign_scan=False),
+
+    # 4) just mu12=mu21
+    "sym_only": dict(q_dim=6, symmetric=True, sign_scan=False),
+}
+
+
+def p_to_q_from_previous(p_prev, symmetric: bool, q_dim: int):
+    """
+    Convert solved p-vector from previous R into q-space initialization.
+    - q_dim==4: only diagonals (rank1_sym)
+    - symmetric: p is length 6
+    - else: p is length 8
+    """
+    p_prev = np.asarray(p_prev, float).ravel()
+
+    if q_dim == 4:
+        mur11, mui11, mur22, mui22 = p_prev[:4]
+        a11, ph11 = complex_to_q(mur11 + 1j * mui11)
+        a22, ph22 = complex_to_q(mur22 + 1j * mui22)
+        return np.array([a11, ph11, a22, ph22], float)
+
+    if symmetric:
+        mur11, mui11, mur22, mui22, mur12, mui12 = p_prev[:6]
+        a11, ph11 = complex_to_q(mur11 + 1j * mui11)
+        a22, ph22 = complex_to_q(mur22 + 1j * mui22)
+        a12, ph12 = complex_to_q(mur12 + 1j * mui12)
+        return np.array([a11, ph11, a22, ph22, a12, ph12], float)
+
+    mur11, mui11, mur22, mui22, mur12, mui12, mur21, mui21 = p_prev[:8]
+    a11, ph11 = complex_to_q(mur11 + 1j * mui11)
+    a22, ph22 = complex_to_q(mur22 + 1j * mui22)
+    a12, ph12 = complex_to_q(mur12 + 1j * mui12)
+    a21, ph21 = complex_to_q(mur21 + 1j * mui21)
+    return np.array([a11, ph11, a22, ph22, a12, ph12, a21, ph21], float)
 
 
 # -----------------------------
@@ -115,8 +191,7 @@ def _build_M_all_and_b_all(config, tau, w, sigma, s_ref, s_1, s_2, n):
       M_all: (m, 2, 12)  [Re, Im] rows for each n-sample
       b_all: (m, 2)
     """
-    
-    m = len(n) - 1 # exclude n=0 sample which is not used in fitting
+    m = len(n) - 1  # exclude n=0 sample which is not used in fitting
     idx = np.arange(m)
 
     alphaK1 = config.alpha[0] * config.K
@@ -211,14 +286,10 @@ def _build_M_all_and_b_all(config, tau, w, sigma, s_ref, s_1, s_2, n):
 
 def _collapse_12_to_identifiable(M_all, config):
     """
-    Collapse 12 → 8 identifiable groups, optionally bake → 6.
+    Collapse 12 → 8 identifiable groups (always).
     Returns:
-      A_phys: (N, p_dim_phys)  where p_dim_phys is 8 or 6
-      b_2d:   (N,)
-      meta:   dict
+      A_phys: (N, 8)
     """
-    # Move this in to _build_M_all_and_b_all
-    # 12 → 8 (STRUCTURAL)
     m = M_all.shape[0]
     M8 = np.zeros((m, 2, 8), float)
     M8[:, :, 0:4] = M_all[:, :, 0:4]
@@ -226,113 +297,38 @@ def _collapse_12_to_identifiable(M_all, config):
     M8[:, :, 5] = 0.5 * (M_all[:, :, 5] + M_all[:, :, 6])   # Im(mu11*mu22)
     M8[:, :, 6] = 0.5 * (M_all[:, :, 8] - M_all[:, :, 11])  # Re(mu12*mu21)
     M8[:, :, 7] = 0.5 * (M_all[:, :, 9] + M_all[:, :, 10])  # Im(mu12*mu21)
-    # I should intorduce bake and hard or any other structural flags in build_M_all_and_b_all
-    bake = bool(getattr(config, "mu_bake_rank_one", False))
-    if bake:
-        # 8 → 6: merge diagonal-product and coupling-product blocks
-        M6 = np.zeros((m, 2, 6), float)
-        M6[:, :, 0:4] = M8[:, :, 0:4]
-        M6[:, :, 4:6] = M8[:, :, 4:6] + M8[:, :, 6:8]
-        A_phys = M6.reshape(-1, 6)
-        return A_phys, bake
+    return M8.reshape(-1, 8)
 
-    A_phys = M8.reshape(-1, 8)
-    return A_phys, bake
 
 # ============================================================
-#  q ↔ μ ↔ p mapping
+#  p -> identifiable mu vec (8)
 # ============================================================
-def q_to_mu_complex(q, enforce_symmetry, hard_constraint=False, sign=+1, bake=False):
+def build_mu_from_p_phys_collapsed(p):
     """
-    q parametrization uses (a,phi) with μ = exp(a) * exp(i phi).
-    - hard_constraint: only diagonals are free; coupling is implicit (rank-one).
-      coupling is constructed branch-stable (avoid complex sqrt branch cuts).
-    - bake: same rank-one idea but without forcing sign selection via two solves.
-    """
-    if hard_constraint:
-        a11, phi11, a22, phi22 = q
-
-        mu11 = np.exp(a11) * (np.cos(phi11) + 1j*np.sin(phi11))
-        mu22 = np.exp(a22) * (np.cos(phi22) + 1j*np.sin(phi22))
-
-        a12 = 0.5 * (a11 + a22)
-        phi12 = 0.5 * (phi11 + phi22)
-        mu12_base = np.exp(a12) * (np.cos(phi12) + 1j*np.sin(phi12))
-
-        mu12 = sign * mu12_base
-        mu21 = mu12
-        return mu11, mu22, mu12, mu21
-
-    if bake:
-        # only diagonals in q; coupling is implied
-        a11, phi11, a22, phi22 = q
-
-        mu11 = np.exp(a11) * (np.cos(phi11) + 1j*np.sin(phi11))
-        mu22 = np.exp(a22) * (np.cos(phi22) + 1j*np.sin(phi22))
-
-        a12 = 0.5 * (a11 + a22)
-        phi12 = 0.5 * (phi11 + phi22)
-
-        mu12 = sign * np.exp(a12) * (np.cos(phi12) + 1j*np.sin(phi12))
-        mu21 = mu12
-        return mu11, mu22, mu12, mu21
-
-    # full soft model
-    if enforce_symmetry:
-        a11, phi11, a22, phi22, a12, phi12 = q
-        a21, phi21 = a12, phi12
-    else:
-        a11, phi11, a22, phi22, a12, phi12, a21, phi21 = q
-
-    mu11 = np.exp(a11) * (np.cos(phi11) + 1j*np.sin(phi11))
-    mu22 = np.exp(a22) * (np.cos(phi22) + 1j*np.sin(phi22))
-    mu12 = np.exp(a12) * (np.cos(phi12) + 1j*np.sin(phi12))
-    mu21 = np.exp(a21) * (np.cos(phi21) + 1j*np.sin(phi21))
-    return mu11, mu22, mu12, mu21
-
-
-def q_to_p(q, enforce_symmetry, hard_constraint=False, sign=+1, bake=False):
-    """
-    p is the "physical parameter vector" returned by the solver:
-      symmetric: [Re11, Im11, Re22, Im22, Re12, Im12]
-      full:      [Re11, Im11, Re22, Im22, Re12, Im12, Re21, Im21]
-    For bake: still returns the same p-layout (so upstream stays consistent).
-    """
-    mu11, mu22, mu12, mu21 = q_to_mu_complex(
-        q, enforce_symmetry, hard_constraint, sign, bake
-    )
-
-    if enforce_symmetry:
-        return np.array([mu11.real, mu11.imag, mu22.real, mu22.imag, mu12.real, mu12.imag], float)
-
-    return np.array([mu11.real, mu11.imag, mu22.real, mu22.imag,
-                     mu12.real, mu12.imag, mu21.real, mu21.imag], float)
-
-
-def build_mu_from_p_phys_collapsed(p, enforce_symmetry):
-    """
-    Build identifiable μ-vector of length 8 used by A_phys (non-baked):
+    Build identifiable μ-vector of length 8 used by A_phys:
       [Re11, Im11, Re22, Im22, Re(mu11*mu22), Im(mu11*mu22), Re(mu12*mu21), Im(mu12*mu21)]
+
+    If p is length 6 -> assumes mu21=mu12.
+    If p is length 8 -> full.
     """
-    if enforce_symmetry:
+    p = np.asarray(p, float).ravel()
+
+    if p.size == 6:
         mur11, mui11, mur22, mui22, mur12, mui12 = p
         mur21, mui21 = mur12, mui12
-    else:
+    elif p.size == 8:
         mur11, mui11, mur22, mui22, mur12, mui12, mur21, mui21 = p
+    else:
+        raise ValueError(f"p must be length 6 or 8, got {p.size}")
 
     # products:
-    re_d = mur11*mur22 - mui11*mui22
-    im_d = mur11*mui22 + mui11*mur22
+    re_d = mur11 * mur22 - mui11 * mui22
+    im_d = mur11 * mui22 + mui11 * mur22
 
-    re_c = mur12*mur21 - mui12*mui21
-    im_c = mur12*mui21 + mui12*mur21
+    re_c = mur12 * mur21 - mui12 * mui21
+    im_c = mur12 * mui21 + mui12 * mur21
 
     return np.array([mur11, mui11, mur22, mui22, re_d, im_d, re_c, im_c], float)
-
-
-def build_mu_from_p_phys_baked6(p, enforce_symmetry):
-    mu8 = build_mu_from_p_phys_collapsed(p, enforce_symmetry)
-    return np.array([mu8[0], mu8[1], mu8[2], mu8[3], mu8[4], mu8[5]], float)
 
 
 # ============================================================
@@ -342,7 +338,6 @@ def solve_mu_per_R(
     config,
     n,
     data_blocks,
-    enforce_symmetry,
     quiet=False,
     init_mu11: complex | None = None,
     init_mu22: complex | None = None,
@@ -350,6 +345,7 @@ def solve_mu_per_R(
 ):
     """
     Solve one global second-order μ-fit for a single R.
+
     Returns:
       p_opt, info
     where p_opt is (6 or 8)-vector of real μ parameters.
@@ -365,12 +361,18 @@ def solve_mu_per_R(
         's_2': complex
       }
     """
+    # -----------------------------
+    # strategy selection
+    # -----------------------------
+    strategy_name = getattr(config, "mu_fit_strategy", "none")
+    if strategy_name not in STRATEGIES:
+        raise ValueError(f"Unknown mu_fit_strategy='{strategy_name}'. Available: {list(STRATEGIES.keys())}")
 
-    hard = bool(getattr(config, "mu_hard_constraint", False))
-    bake = bool(getattr(config, "mu_bake_rank_one", False))
+    S = STRATEGIES[strategy_name]
+    q_dim = int(S["q_dim"])
+    is_sym = bool(S["symmetric"])
+    sign_scan = bool(S["sign_scan"])
 
-    if hard and bake:
-        raise ValueError("mu_hard_constraint and mu_bake_rank_one cannot both be True.")
 
     # -----------------------------
     # build stacked physics system
@@ -383,31 +385,26 @@ def solve_mu_per_R(
     rel_svd_thresh = float(getattr(config, "mu_svd_rel_thresh", 1e-10))
 
     def _append_block(tag, w_blk, sig_blk, s_ref_blk, tau_blk, s_1_blk, s_2_blk):
-        # Normalize to 1D (single trajectory)
         w_blk = np.asarray(w_blk).reshape(-1)
         sig_blk = np.asarray(sig_blk).reshape(-1)
 
         if w_blk.shape != sig_blk.shape:
             raise ValueError(f"{tag}: w_blk and sig_blk must have same shape, got {w_blk.shape} vs {sig_blk.shape}")
 
-        w = w_blk
-        sig = sig_blk
-
-        # Build regression blocks
         M_all, b_all = _build_M_all_and_b_all(
-            config, tau_blk, w, sig, s_ref_blk, s_1_blk, s_2_blk, n
+            config, tau_blk, w_blk, sig_blk, s_ref_blk, s_1_blk, s_2_blk, n
         )
-        A_phys, _ = _collapse_12_to_identifiable(M_all, config)
-        b_2d = b_all.reshape(-1)
+        A_phys_blk = _collapse_12_to_identifiable(M_all, config)
+        b_2d_blk = b_all.reshape(-1)
 
-        # Column scaling (same logic, no change)
-        col_norms = np.linalg.norm(A_phys, axis=0)
+        # Column scaling
+        col_norms = np.linalg.norm(A_phys_blk, axis=0)
         max_norm = np.max(col_norms) if np.any(col_norms > 0) else 1.0
         eff = np.maximum(col_norms, rel_col_thresh * max_norm)
-        A_scaled = A_phys / eff
+        A_scaled = A_phys_blk / eff
 
-        A_blocks.append((A_scaled, eff, A_phys))
-        b_blocks.append(b_2d)
+        A_blocks.append((A_scaled, eff, A_phys_blk))
+        b_blocks.append(b_2d_blk)
 
         rnk, smax, smin, ratio, _ = svd_rank(A_scaled, rel_thresh=rel_svd_thresh)
         block_info.append(
@@ -417,13 +414,11 @@ def solve_mu_per_R(
                 rank_scaled=rnk,
                 svd_sigma_min_scaled=smin,
                 svd_ratio_scaled=ratio,
-                p_dim=A_phys.shape[1],
+                p_dim=A_phys_blk.shape[1],
             )
         )
 
-    # Process all blocks
     for blk in data_blocks:
-
         _append_block(
             tag=blk["tag"],
             w_blk=blk["w"],
@@ -440,11 +435,6 @@ def solve_mu_per_R(
     # -----------------------------
     # q-dimension + bounds + init
     # -----------------------------
-    if hard or bake:
-        q_dim = 4
-    else:
-        q_dim = 6 if enforce_symmetry else 8
-
     q0 = np.zeros(q_dim)
 
     a_min = float(getattr(config, "mu_logmag_min", -0.7))
@@ -458,14 +448,13 @@ def solve_mu_per_R(
     lower = np.full(q_dim, -np.inf)
     upper = np.full(q_dim, +np.inf)
 
+    # diagonal bounds always exist in indices 0..3
     lower[:4:2] = a_min
     upper[:4:2] = a_max
     lower[1:4:2] = -phi_max
     upper[1:4:2] = +phi_max
 
-    # -------------------------------------------------
-    # linear μ initialization (diagonals)
-    # -------------------------------------------------
+    # diagonals init
     if init_mu11 is not None:
         a11, ph11 = complex_to_q(init_mu11)
         q0[0] = np.clip(a11, a_min, a_max)
@@ -476,95 +465,92 @@ def solve_mu_per_R(
         q0[2] = np.clip(a22, a_min, a_max)
         q0[3] = np.clip(ph22, -phi_max, phi_max)
 
-    # -------------------------------------------------
-    # WARM START from previous R
-    # -------------------------------------------------
+    # warm start from previous R
     if prev_p_opt is not None:
         try:
-            q_prev = p_to_q_from_previous(
-                prev_p_opt,
-                enforce_symmetry,
-                hard=hard,
-                bake=bake,
-            )
-
+            q_prev = p_to_q_from_previous(prev_p_opt, symmetric=is_sym, q_dim=q_dim)
             k = min(q_prev.size, q0.size)
             q0[:k] = np.clip(q_prev[:k], lower[:k], upper[:k])
-
             if not quiet:
                 logger.info("[Second-order μ | warm-start] Using previous R solution.")
-
         except Exception as e:
-            logger.warning(
-                f"[Second-order μ | warm-start] Failed, fallback to default init. Reason: {e}"
-            )
+            logger.warning(f"[Second-order μ | warm-start] Failed, fallback to default init. Reason: {e}")
 
-    # -------------------------------------------------
-    # coupling initialization (only if soft + non-baked)
-    # -------------------------------------------------
+    # coupling initialization / bounds depending on strategy
     mu12_prior = getattr(config, "mu12_prior", 1.0 + 0.0j)
     mu21_prior = getattr(config, "mu21_prior", mu12_prior)
 
-    if (not hard) and (not bake):
+    if strategy_name in ("sym_only", "none"):
+        # explicit coupling logmag+phase in q
         a12, ph12 = complex_to_q(mu12_prior)
-        q0[4:6] = [
-            np.clip(a12, a_min_c, a_max_c),
-            np.clip(ph12, -phi_max_c, phi_max_c),
-        ]
+        q0[4] = np.clip(a12, a_min_c, a_max_c)
+        q0[5] = np.clip(ph12, -phi_max_c, phi_max_c)
         lower[4:6] = [a_min_c, -phi_max_c]
         upper[4:6] = [a_max_c, +phi_max_c]
 
-        if not enforce_symmetry:
+        if strategy_name == "none":
             a21, ph21 = complex_to_q(mu21_prior)
-            q0[6:8] = [
-                np.clip(a21, a_min_c, a_max_c),
-                np.clip(ph21, -phi_max_c, phi_max_c),
-            ]
+            q0[6] = np.clip(a21, a_min_c, a_max_c)
+            q0[7] = np.clip(ph21, -phi_max_c, phi_max_c)
             lower[6:8] = [a_min_c, -phi_max_c]
             upper[6:8] = [a_max_c, +phi_max_c]
 
+    elif strategy_name == "rank1_mag_phasefree":
+        # q[4], q[5] are phases only
+        q0[4] = np.clip(np.angle(mu12_prior), -phi_max_c, phi_max_c)
+        q0[5] = np.clip(np.angle(mu21_prior), -phi_max_c, phi_max_c)
+        lower[4:6] = [-phi_max_c, -phi_max_c]
+        upper[4:6] = [+phi_max_c, +phi_max_c]
+
+    # rank1_sym: no explicit coupling params in q; nothing to do
+
+    # -----------------------------
+    # optional regularization targets
+    # -----------------------------
     p_init = None
     p_cont = None
     if prev_p_opt is not None:
-        p_cont = np.asarray(prev_p_opt, float)
+        p_cont = np.asarray(prev_p_opt, float).ravel()
+
     if (init_mu11 is not None) or (init_mu22 is not None):
         mu11_0 = init_mu11 if init_mu11 is not None else (1.0 + 0.0j)
         mu22_0 = init_mu22 if init_mu22 is not None else (1.0 + 0.0j)
-
-        if enforce_symmetry:
-            p_init = np.array([mu11_0.real, mu11_0.imag, mu22_0.real, mu22_0.imag,
-                               mu12_prior.real, mu12_prior.imag], float)
+        if is_sym:
+            p_init = np.array(
+                [mu11_0.real, mu11_0.imag, mu22_0.real, mu22_0.imag, mu12_prior.real, mu12_prior.imag],
+                float,
+            )
         else:
-            p_init = np.array([mu11_0.real, mu11_0.imag, mu22_0.real, mu22_0.imag,
-                               mu12_prior.real, mu12_prior.imag, mu21_prior.real, mu21_prior.imag], float)
-
-        if hard or bake:
-            if enforce_symmetry:
-                p_init[4:6] = 0.0
-            else:
-                p_init[4:8] = 0.0
+            p_init = np.array(
+                [mu11_0.real, mu11_0.imag, mu22_0.real, mu22_0.imag,
+                 mu12_prior.real, mu12_prior.imag, mu21_prior.real, mu21_prior.imag],
+                float,
+            )
 
     lam_target = float(getattr(config, "mu_modelIII_lambda", 0.0))
     lam_init   = float(getattr(config, "mu_init_lambda", 0.0))
-    lam_one = float(getattr(config, "mu_one_target_lambda", 0.0))
-    lam_cont = float(getattr(config, "mu_continuation_lambda", 0.0))
+    lam_one    = float(getattr(config, "mu_one_target_lambda", 0.0))
+    lam_cont   = float(getattr(config, "mu_continuation_lambda", 0.0))
 
-    # target p-vector
-    p_target = np.array([1, 0, 1, 0, 1, 0], float) if enforce_symmetry else np.array([1, 0, 1, 0, 1, 0, 1, 0], float)
+    p_target = np.array([1, 0, 1, 0, 1, 0], float) if is_sym else np.array([1, 0, 1, 0, 1, 0, 1, 0], float)
 
     # -----------------------------
-    # solver for sign (hard/bake) or single run (soft)
+    # solver (sign scan only for rank1_sym)
     # -----------------------------
     def solve_for_sign(sign):
         def residual(q):
-            p = q_to_p(q, enforce_symmetry, hard_constraint=hard, sign=sign, bake=bake)
-
-            # physics mapping
-            if bake:
-                mu_vec = build_mu_from_p_phys_baked6(p, enforce_symmetry)   # (6,)
+            if strategy_name == "rank1_sym":
+                p = q_to_p_rank1_sym(q, sign=sign)
+            elif strategy_name == "sym_only":
+                p = q_to_p_sym_only(q)
+            elif strategy_name == "none":
+                p = q_to_p_none(q)
+            elif strategy_name == "rank1_mag_phasefree":
+                p = q_to_p_rank1_mag_phasefree(q)
             else:
-                mu_vec = build_mu_from_p_phys_collapsed(p, enforce_symmetry)  # (8,)
+                raise RuntimeError("Internal: unknown strategy dispatch")
 
+            mu_vec = build_mu_from_p_phys_collapsed(p)  # always (8,)
             r_phys = A_phys @ mu_vec - b_2d
             Rv = r_phys / np.sqrt(max(r_phys.size, 1))
 
@@ -575,16 +561,17 @@ def solve_mu_per_R(
 
             if lam_init > 0 and (p_init is not None):
                 reg_list.append(np.sqrt(lam_init) * (p - p_init))
-            
+
             if lam_cont > 0 and (p_cont is not None):
-                reg_list.append(
-                    np.sqrt(lam_cont) * (p - p_cont)
-                )
+                # continuation can be mismatched dim if strategy differs across runs; guard it
+                if p_cont.size == p.size:
+                    reg_list.append(np.sqrt(lam_cont) * (p - p_cont))
+
             if lam_one > 0:
-                mur11, _, mur22, _, _, _ = p
-                reg_real = np.sqrt(lam_one) * np.array(
-                    [mur11 - 1.0, mur22 - 1.0], float
-                )
+                # penalize Re(mu11) and Re(mu22) toward 1.0 (dimension-agnostic)
+                mur11 = float(p[0])
+                mur22 = float(p[2])
+                reg_real = np.sqrt(lam_one) * np.array([mur11 - 1.0, mur22 - 1.0], float)
                 reg_list.append(reg_real)
 
             reg = np.concatenate(reg_list) if reg_list else np.empty(0)
@@ -594,7 +581,6 @@ def solve_mu_per_R(
             out[bad] = 1e6
             return out
 
-
         method = getattr(config, "lsq_method", "trf")
         if method == "trf":
             res = least_squares(residual, q0, method=method, bounds=(lower, upper))
@@ -602,17 +588,27 @@ def solve_mu_per_R(
             res = least_squares(residual, q0, method=method)
 
         q_opt = res.x
-        p_opt = q_to_p(q_opt, enforce_symmetry, hard_constraint=hard, sign=sign, bake=bake)
+
+        # reconstruct p
+        if strategy_name == "rank1_sym":
+            p_opt = q_to_p_rank1_sym(q_opt, sign=sign)
+        elif strategy_name == "sym_only":
+            p_opt = q_to_p_sym_only(q_opt)
+        elif strategy_name == "none":
+            p_opt = q_to_p_none(q_opt)
+        elif strategy_name == "rank1_mag_phasefree":
+            p_opt = q_to_p_rank1_mag_phasefree(q_opt)
+        else:
+            raise RuntimeError("Internal: unknown strategy dispatch")
 
         r = residual(q_opt)
         r = r[np.isfinite(r)]
         rn = float(np.linalg.norm(r)) if r.size else np.nan
         return p_opt, float(res.cost), rn
 
-    if hard or bake:
+    if sign_scan:
         p_p, cost_p, rn_p = solve_for_sign(+1)
         p_m, cost_m, rn_m = solve_for_sign(-1)
-
         if cost_p <= cost_m:
             p_opt, best_cost, best_rn, best_sign = p_p, cost_p, rn_p, +1
         else:
@@ -620,18 +616,13 @@ def solve_mu_per_R(
     else:
         p_opt, best_cost, best_rn = solve_for_sign(+1)
         best_sign = +1
-    
-    if bake:
-        mu_vec = build_mu_from_p_phys_baked6(p_opt, enforce_symmetry)
-    else:
-        mu_vec = build_mu_from_p_phys_collapsed(p_opt, enforce_symmetry)
 
+    mu_vec = build_mu_from_p_phys_collapsed(p_opt)
     r_phys = A_phys @ mu_vec - b_2d
     N_phys = max(r_phys.size, 1)
 
     phys_cost = 0.5 * float(np.dot(r_phys, r_phys)) / N_phys
-    phys_rms  = float(np.linalg.norm(r_phys) / np.sqrt(N_phys))
-
+    phys_rms = float(np.linalg.norm(r_phys) / np.sqrt(N_phys))
 
     # -----------------------------
     # info summary
@@ -653,31 +644,26 @@ def solve_mu_per_R(
         )
 
     info = dict(
+        mu_fit_strategy=strategy_name,
         global_cost=float(best_cost),
         residual_norm=float(best_rn),
-
         phys_cost=float(phys_cost),
         phys_rms=float(phys_rms),
-
         cond_A_phys=cond_safe(A_phys),
         rank_A_phys=svd_rank(A_phys, rel_thresh=rel_svd_thresh)[0],
         mu_svd_rel_thresh=rel_svd_thresh,
-        p_dim=int(np.asarray(p_opt).size),# check this later
-        mu12_sign=int(best_sign),
-        bake_rank_one=bool(bake),
-        hard_constraint=bool(hard),
+        p_dim=int(np.asarray(p_opt).size),
+        mu12_sign=int(best_sign),  # only meaningful if sign_scan=True
     )
 
-    # Summarize all blocks
-    unique_tags = sorted(list(set(b['tag'] for b in data_blocks)))
+    unique_tags = sorted(list(set(b["tag"] for b in data_blocks)))
     for tag in unique_tags:
         info[f"{tag}_summary"] = summarize(tag)
 
-    if (not quiet):
+    if not quiet:
         info["block_info"] = block_info
 
     return p_opt, info
-
 
 # functions may be added later if needed
 

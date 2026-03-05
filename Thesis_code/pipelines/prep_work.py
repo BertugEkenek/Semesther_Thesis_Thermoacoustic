@@ -20,7 +20,6 @@ def initialize_plot(
     tau: float,
     filename: str,
     correction: bool,
-    enforce_symmetry: bool,
     branch_id: int | None = None,
 ):
     """
@@ -31,7 +30,9 @@ def initialize_plot(
 
     Second-order case:
       - branch_id is ignored
-      - μ layout depends on bake/symmetry
+      - symmetry is inferred from μ length:
+          len=6 => μ12=μ21
+          len=8 => full μ12, μ21
     """
 
     logger.info(
@@ -53,35 +54,34 @@ def initialize_plot(
     if mu_order == "First":
         if branch_id not in (1, 2):
             raise ValueError(
-                "initialize_plot: branch_id must be 1 or 2 "
-                "for linear μ plotting."
+                "initialize_plot: branch_id must be 1 or 2 for linear μ plotting."
             )
 
         if branch_id == 1:
             s_ref = EV0_branch1[index]
-        elif branch_id == 2:
-            s_ref = EV0_branch2[index]
         else:
-            raise ValueError(f"Invalid branch_id {branch_id} for linear μ plotting.")
+            if EV0_branch2 is None:
+                raise ValueError("initialize_plot: EV0_branch2 is required for branch_id=2.")
+            s_ref = EV0_branch2[index]
 
         config.w[branch_id - 1] = s_ref
         logger.info(
-            f"[initialize_plot | linear] Using branch {branch_id} "
-            f"reference mode s = {s_ref}"
+            f"[initialize_plot | linear] Using branch {branch_id} reference mode s = {s_ref}"
         )
 
     else:
         # -------------------------------
         # Second order → two branches
         # -------------------------------
+        if EV0_branch2 is None:
+            raise ValueError("initialize_plot: EV0_branch2 must be provided for second-order plotting.")
+
         s1 = EV0_branch1[index]
-        config.w[0] = s1
         s2 = EV0_branch2[index]
+        config.w[0] = s1
         config.w[1] = s2
 
-        logger.info(
-            f"[initialize_plot | second-order] s1 = {s1}, s2 = {s2}"
-        )
+        logger.info(f"[initialize_plot | second-order] s1 = {s1}, s2 = {s2}")
 
     # ==========================================================
     # μ selection and reporting
@@ -103,30 +103,29 @@ def initialize_plot(
 
         elif mu_order == "Second":
             mu = np.asarray(mu_array[index], dtype=float)
-            mu_dim = mu.size
+            p_dim = int(mu.size)
+
+            if p_dim not in (6, 8):
+                raise ValueError(
+                    f"initialize_plot: second-order mu must have length 6 or 8, got {p_dim}."
+                )
 
             mur11, mui11 = mu[0], mu[1]
             mur22, mui22 = mu[2], mu[3]
-
-            mu11 = mur11 + 1j * mui11
-            mu22 = mur22 + 1j * mui22
+            mur12, mui12 = mu[4], mu[5]
 
             text = (
                 "Using second-order μ values:\n"
                 f"  μ11 = {mur11:.4f} + i {mui11:.4f}\n"
                 f"  μ22 = {mur22:.4f} + i {mui22:.4f}\n"
+                f"  μ12 = {mur12:.4f} + i {mui12:.4f}\n"
             )
 
-            if mu_dim >= 6:
-                mur12, mui12 = mu[4], mu[5]
-                text += f"  μ12 = μ21 = {mur12:.4f} + i {mui12:.4f}"
+            if p_dim == 6:
+                text += "  μ21 = μ12 (symmetric)"
             else:
-                # baked rank-one → reconstruct
-                mu12 = np.sqrt(mu11 * mu22)
-                text += (
-                    f"  μ12 = μ21 = {mu12.real:.4f} "
-                    f"+ i {mu12.imag:.4f} (baked)"
-                )
+                mur21, mui21 = mu[6], mu[7]
+                text += f"  μ21 = {mur21:.4f} + i {mui21:.4f}"
 
             logger.info(text)
 
@@ -142,7 +141,7 @@ def initialize_plot(
                 color="black",
                 linestyle="-",
                 linewidth=1,
-                label="ω2",
+                label="ω₂",
             )
 
         else:
@@ -160,7 +159,7 @@ def initialize_plot(
             label="ω",
         )
 
-   # ==========================================================
+    # ==========================================================
     # Labels, title, save path
     # ==========================================================
     ax.set_xlabel("Frequency (rad/s)")
@@ -171,19 +170,13 @@ def initialize_plot(
     ax.grid(True)
     plt.tight_layout()
 
-    # ---- SAVE PATH (SINGLE SOURCE OF TRUTH) ----
-    save_dir = os.path.join(
-        ".", "Results", "Plots", config.name, f"{int(tau * 1000)}ms"
-    )
+    save_dir = os.path.join(".", "Results", "Plots", config.name, f"{int(tau * 1000)}ms")
     os.makedirs(save_dir, exist_ok=True)
 
-    # filename MUST be a basename (enforced defensively)
     filename = os.path.basename(filename)
-
     save_path = os.path.join(save_dir, filename)
 
     return fig, ax, mu, save_path
-
 # --------------------------------------------------------------
 # EV trajectory conversion (unchanged)
 # --------------------------------------------------------------

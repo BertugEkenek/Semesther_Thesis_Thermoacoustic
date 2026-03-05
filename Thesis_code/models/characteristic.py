@@ -82,8 +82,8 @@ def characteristic_poly_model3_1mode(
 
 def characteristic_poly_model3_2mode(
     s: complex, F: callable, n: float, tau: float, order: int,
-    config: object, mu, enforce_symmetry: bool
-):
+    config: object, mu):
+
     K = config.K
     w1 = config.w[0]
     w2 = config.w[1]
@@ -91,7 +91,7 @@ def characteristic_poly_model3_2mode(
     alpha = config.alpha
     Lambda = config.Lambda
 
-    mu11, mu22, mu12, mu21 = _parse_mu_second_order(mu, enforce_symmetry=enforce_symmetry)
+    mu11, mu22, mu12, mu21 = _parse_mu_second_order(mu)
 
     if F.__name__ == 'F_pade':
         Fs_numerator, Fs_denominator = F(s, n, tau, order)
@@ -121,7 +121,7 @@ def _is_scalar_mu(mu) -> bool:
 def _mu_to_complex_scalar(x) -> complex:
     return complex(np.asarray(x).squeeze())
 
-def _parse_mu_second_order(mu, enforce_symmetry: bool):
+def _parse_mu_second_order(mu):
     """
     Accepts multiple mu formats and returns (mu11, mu22, mu12, mu21) as complex scalars.
 
@@ -155,11 +155,7 @@ def _parse_mu_second_order(mu, enforce_symmetry: bool):
         mu21 = mu12
         return mu11, mu22, mu12, mu21
 
-    if enforce_symmetry:
-        if L != 6:
-            raise ValueError(
-                f"Expected symmetric mu length 6 (or baked length 4), got {L}."
-            )
+    if L == 6:
         mu11 = _mu_to_complex_scalar(mu_arr[0] + 1j * mu_arr[1])
         mu22 = _mu_to_complex_scalar(mu_arr[2] + 1j * mu_arr[3])
         mu12 = _mu_to_complex_scalar(mu_arr[4] + 1j * mu_arr[5])
@@ -167,10 +163,9 @@ def _parse_mu_second_order(mu, enforce_symmetry: bool):
         return mu11, mu22, mu12, mu21
 
     # full case
-    if L != 8:
-        raise ValueError(f"Expected full mu length 8, got {L}.")
-    mu11 = _mu_to_complex_scalar(mu_arr[0] + 1j * mu_arr[1])
-    mu22 = _mu_to_complex_scalar(mu_arr[2] + 1j * mu_arr[3])
-    mu12 = _mu_to_complex_scalar(mu_arr[4] + 1j * mu_arr[5])
-    mu21 = _mu_to_complex_scalar(mu_arr[6] + 1j * mu_arr[7])
-    return mu11, mu22, mu12, mu21
+    if L == 8:
+        mu11 = _mu_to_complex_scalar(mu_arr[0] + 1j * mu_arr[1])
+        mu22 = _mu_to_complex_scalar(mu_arr[2] + 1j * mu_arr[3])
+        mu12 = _mu_to_complex_scalar(mu_arr[4] + 1j * mu_arr[5])
+        mu21 = _mu_to_complex_scalar(mu_arr[6] + 1j * mu_arr[7])
+        return mu11, mu22, mu12, mu21

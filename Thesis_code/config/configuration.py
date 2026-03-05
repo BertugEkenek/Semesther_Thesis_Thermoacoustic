@@ -21,11 +21,16 @@ class Configuration:
         
         self.mu_continuation_lambda = 0.0
 
-        self.mu_hard_constraint = False
-        
         self.mu_col_rel_thresh = 1e-12
         self.mu_svd_rel_thresh = 1e-10 
-        self.mu_bake_rank_one = False
+
+        # --- second-order μ fitting strategy (replaces hard/bake/enforce_symmetry flags) ---
+        # Supported examples:
+        #   "rank1_sym"            -> rank-one + mu12=mu21 (coupling implied by diagonals, sign solve optional)
+        #   "rank1_mag_phasefree"  -> rank-one + |mu12|=|mu21|, phase free (implementation-specific)
+        #   "none"                 -> no constraint (full mu12, mu21)
+        #   "sym_only"             -> only mu12=mu21 (no rank-one)
+        self.mu_fit_strategy = "sym_only"
         
 
         if config_type == "Rijke_tube_1":

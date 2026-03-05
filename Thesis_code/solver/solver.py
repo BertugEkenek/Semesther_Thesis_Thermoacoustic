@@ -14,27 +14,28 @@ def solve_roots(
     correction: bool,
     Galerkin: str,
     mu_order: str,
-    enforce_symmetry: bool,
     branch_id: int | None = None,
 ):
-
     """
     Compute polynomial coefficients and return its roots.
     Clean version using model-selection registry.
+
+    For second-order 2-mode model, symmetry is inferred from `mu` shape/length
+    inside the characteristic model (e.g. p length 6 => mu21=mu12; p length 8 => full).
     """
 
     s = np.poly1d([1, 0])
 
     characteristic_fn = select_characteristic_model(
-    correction=correction,
-    mu_order=mu_order,
-    Galerkin=Galerkin,
+        correction=correction,
+        mu_order=mu_order,
+        Galerkin=Galerkin,
     )
 
     if characteristic_fn.__name__ == "characteristic_poly_model3_2mode":
-        # Second-order: branch handled internally
+        # Second-order: branch handled internally; no symmetry flag anymore
         char_eq = characteristic_fn(
-            s, F_model, n, tau, order, config, mu, enforce_symmetry
+            s, F_model, n, tau, order, config, mu
         )
 
     elif characteristic_fn.__name__ == "characteristic_poly_model3_1mode":
@@ -56,7 +57,6 @@ def solve_roots(
 
     else:
         char_eq = characteristic_fn(s, F_model, n, tau, order, config)
-
 
     coeffs = np.asarray(char_eq.coeffs, dtype=complex)
 
@@ -101,23 +101,21 @@ def create_solution_data(
     Backward compatible: returns exactly ONE eigenvalue per n (branch-1 acoustic root).
     """
     solutions = []
-    w1 = config.w[0].imag
+    w1 = float(config.w[0].imag)
 
     for n in n_values:
         roots = solve_roots(
-        F_model,
-        n,
-        tau,
-        order,
-        config,
-        mu=1.0,
-        correction=False,
-        Galerkin="Second",
-        mu_order="First",
-        enforce_symmetry=False,
-        branch_id=1,
-    )
-
+            F_model=F_model,
+            n=n,
+            tau=tau,
+            order=order,
+            config=config,
+            mu=1.0,
+            correction=False,
+            Galerkin="Second",
+            mu_order="First",
+            branch_id=1,
+        )
 
         r1 = _pick_acoustic_root(roots, w1, window)
         if r1 is None:
@@ -148,46 +146,31 @@ def create_solution_data_two_branches(
     w2 = float(config.w[1].imag)
 
     for n in n_values:
-        roots = solve_roots(
-            F_model,
-            n,
-            tau,
-            order,
-            config,
-            mu=1.0,
-            correction=False,
-            Galerkin="Second",
-            mu_order="First",
-            enforce_symmetry=False,
-        )
-
-        # --- Branch 1 ---
+        # Branch 1
         roots_1 = solve_roots(
-            F_model,
-            n,
-            tau,
-            order,
-            config,
+            F_model=F_model,
+            n=n,
+            tau=tau,
+            order=order,
+            config=config,
             mu=1.0,
             correction=False,
             Galerkin="Second",
             mu_order="First",
-            enforce_symmetry=False,
             branch_id=1,
         )
 
-        # --- Branch 2 ---
+        # Branch 2
         roots_2 = solve_roots(
-            F_model,
-            n,
-            tau,
-            order,
-            config,
+            F_model=F_model,
+            n=n,
+            tau=tau,
+            order=order,
+            config=config,
             mu=1.0,
             correction=False,
             Galerkin="Second",
             mu_order="First",
-            enforce_symmetry=False,
             branch_id=2,
         )
 

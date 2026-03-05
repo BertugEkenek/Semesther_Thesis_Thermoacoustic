@@ -1,5 +1,3 @@
-# pipelines/plotting_pipeline.py
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -37,15 +35,15 @@ def plot_eigenvalue_trajectories(
     Galerkin: str,
     window: int,
     correction: bool,
-    enforce_symmetry: bool,
     flame_model_approximator: str,
     comparison: bool,
 ):
     """
     Plot eigenvalue trajectories for the selected configuration.
 
-    Replicates the branch logic from the original SolveforEig.solve_save_plot,
-    but isolated from IO and orchestration.
+    Notes:
+      - For second-order (2-mode) corrected model, symmetry is inferred from `mu` length.
+      - For first-order (1-mode) corrected model, branch_id is required and comes from axis metadata.
     """
 
     # ----------------------------------------------------------
@@ -81,7 +79,6 @@ def plot_eigenvalue_trajectories(
             Galerkin,
             window,
             correction,
-            enforce_symmetry,
             label=f"{flame_model_approximator} Approx with correction μ",
             cmap="jet",
             branch_id=branch_id,
@@ -98,7 +95,6 @@ def plot_eigenvalue_trajectories(
                 Galerkin="First",
                 window=window,
                 correction=False,
-                enforce_symmetry=False,
                 label=f"{flame_model_approximator} Approx",
                 cmap="copper",
                 branch_id=branch_id,
@@ -116,7 +112,6 @@ def plot_eigenvalue_trajectories(
             Galerkin=Galerkin,
             window=window,
             correction=False,
-            enforce_symmetry=False,
             label=f"{flame_model_approximator} Approx",
             cmap="jet",
             branch_id=branch_id,
@@ -133,7 +128,6 @@ def plot_eigenvalue_trajectories(
             Galerkin,
             window,
             correction,
-            enforce_symmetry,
             label=f"{flame_model_approximator} Approx",
             cmap="jet",
         )
@@ -149,7 +143,6 @@ def plot_eigenvalue_trajectories(
             Galerkin,
             window,
             correction,
-            enforce_symmetry,
             label=f"{flame_model_approximator} Approx with correction μ",
             cmap="jet",
         )
@@ -165,7 +158,6 @@ def plot_eigenvalue_trajectories(
                 Galerkin=Galerkin,
                 window=window,
                 correction=False,
-                enforce_symmetry=False,
                 label=f"{flame_model_approximator} Approx",
                 cmap="copper",
                 marker="+",
@@ -228,7 +220,6 @@ def plot_mu_global_diagnostics(
     R,
     config,
     mu_pipeline=None,
-    enforce_symmetry=True,
     show_fig=True,
     save_fig=False,
     fig_dir="./Results/Figures",
@@ -237,63 +228,48 @@ def plot_mu_global_diagnostics(
     """
     Global μ(R) diagnostics and result plots.
 
-    Non-intrusive:
-      - no solver calls
-      - no pipeline mutation
-      - respects show_fig / save_fig flags
+    Symmetry is inferred from mu_array.shape[1]:
+      p_dim=6 => symmetric
+      p_dim=8 => full
     """
 
-    # Guard: only second-order μ arrays
     if not isinstance(mu_array, np.ndarray) or mu_array.ndim != 2:
         return
 
     os.makedirs(fig_dir, exist_ok=True)
 
-    # --------------------------------------------------
-    # μ complex plane (legacy diagnostic; shows immediately)
-    # --------------------------------------------------
+    # μ complex plane
     plot_mu_complex_plane(
         mu_array=mu_array,
         R=R,
-        enforce_symmetry=enforce_symmetry,
         title_suffix=title_suffix,
     )
 
-    # --------------------------------------------------
     # μ·ν components (Re/Im)
-    # --------------------------------------------------
     fig1, ax1 = plt.subplots()
     plot_mu_nu_components(R, mu_array, config.nu, ax=ax1)
     fig1.tight_layout()
     if save_fig:
         fig1.savefig(os.path.join(fig_dir, "mu_nu_components.png"), dpi=600)
 
-    # --------------------------------------------------
     # μ·ν magnitude
-    # --------------------------------------------------
     fig2, ax2 = plt.subplots()
     plot_mu_nu_magnitude(R, mu_array, config.nu, ax=ax2)
     fig2.tight_layout()
     if save_fig:
         fig2.savefig(os.path.join(fig_dir, "mu_nu_magnitude.png"), dpi=600)
-    
-    # --------------------------------------------------
-    # μ·ν complex plane (effective coupling)
-    # --------------------------------------------------
+
+    # μ·ν complex plane
     fig0, _ = plot_mu_nu_complex_plane(
         mu_array=mu_array,
         R=R,
         nu=config.nu,
-        enforce_symmetry=enforce_symmetry,
         title_suffix=title_suffix,
     )
     if save_fig:
         fig0.savefig(os.path.join(fig_dir, "mu_nu_complex_plane.png"), dpi=600, bbox_inches="tight")
 
-
-    # --------------------------------------------------
     # Conditioning diagnostics (optional)
-    # --------------------------------------------------
     if mu_pipeline is not None:
         cond_nums = getattr(mu_pipeline, "mu_cond_numbers", None)
         if cond_nums is not None and len(cond_nums) == len(R):
@@ -303,7 +279,6 @@ def plot_mu_global_diagnostics(
             if save_fig:
                 fig3.savefig(os.path.join(fig_dir, "mu_condition_numbers.png"), dpi=600)
 
-
         ranks = getattr(mu_pipeline, "mu_ranks", None)
         if ranks is not None and len(ranks) == len(R):
             fig4, ax4 = plt.subplots()
@@ -311,7 +286,6 @@ def plot_mu_global_diagnostics(
             fig4.tight_layout()
             if save_fig:
                 fig4.savefig(os.path.join(fig_dir, "mu_ranks.png"), dpi=600)
-
 
         residuals = getattr(mu_pipeline, "mu_residuals", None)
         if residuals is not None and len(residuals) == len(R):
@@ -321,3 +295,7 @@ def plot_mu_global_diagnostics(
             if save_fig:
                 fig5.savefig(os.path.join(fig_dir, "mu_residuals.png"), dpi=600)
 
+    if show_fig:
+        plt.show()
+    else:
+        plt.close("all")

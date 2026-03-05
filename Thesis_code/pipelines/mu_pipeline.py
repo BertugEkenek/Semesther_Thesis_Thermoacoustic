@@ -64,7 +64,6 @@ class MUFITPipeline:
 
         # behavior
         fit_branches: list[int] | None = None,
-        enforce_symmetry: bool = True,
     ):
         self.config = config
         self.logger = logger
@@ -78,8 +77,6 @@ class MUFITPipeline:
         self.fit_branches = list(self.fit_branches)
         if not set(self.fit_branches).issubset({1, 2}):
             raise ValueError(f"fit_branches must be subset of [1,2], got {self.fit_branches}")
-
-        self.enforce_symmetry = enforce_symmetry
 
         # canonical dataset store
         self.data_store: dict[int, dict] = {}
@@ -200,7 +197,6 @@ class MUFITPipeline:
 
             self.data_store[tau_ms] = d
 
-
     # ==========================================================
     # Reshape helper
     # ==========================================================
@@ -282,7 +278,6 @@ class MUFITPipeline:
         if not tau_keys:
             raise ValueError("tau_train_list must be non-empty.")
 
-        # validate tau existence
         missing = [k for k in tau_keys if k not in self.data_store]
         if missing:
             raise KeyError(f"Requested taus (ms) not loaded: {missing}. Loaded: {self.get_tau_keys_ms()}")
@@ -344,10 +339,13 @@ class MUFITPipeline:
         self,
         config: object,
         tau_train_list: list[float | int],
-        enforce_symmetry: bool,
     ):
         if set(self.fit_branches) != {1, 2}:
             raise ValueError("Second-order μ-fit requires fit_branches=[1,2].")
+
+        # validate strategy presence early (nice error)
+        if not hasattr(config, "mu_fit_strategy"):
+            raise AttributeError("config.mu_fit_strategy must be set for second-order μ-fit (e.g. 'rank1_sym', 'sym_only', 'none', 'rank1_mag_phasefree').")
 
         tau_keys = [_tau_to_key_ms(t) for t in tau_train_list]
         if not tau_keys:
@@ -377,7 +375,6 @@ class MUFITPipeline:
                 ev1 = np.hstack(d_init["EV0_b1"]).ravel()
                 ev2 = np.hstack(d_init["EV0_b2"]).ravel()
 
-                # linear init helper (re-using your linear regression)
                 def _linear_mu_complex(branch_id, tau_s, w_vec, sig_vec, s_ref):
                     cfg = config.get_branch_config(branch_id)
                     A = linfit.build_A(n, tau_s, w_vec, sig_vec, s_ref)
@@ -430,7 +427,6 @@ class MUFITPipeline:
                 config=config,
                 n=n,
                 data_blocks=data_blocks,
-                enforce_symmetry=enforce_symmetry,
                 quiet=True,
                 init_mu11=init_mu11,
                 init_mu22=init_mu22,
@@ -442,6 +438,7 @@ class MUFITPipeline:
 
             self.logger.info(
                 f"[Second-order μ] R[{i}]={R[i]:.2e} | "
+                f"strategy={getattr(config, 'mu_fit_strategy', '???')} | "
                 f"cost={info.get('global_cost', np.nan):.3e} | "
                 f"phys_cost={info.get('phys_cost', np.nan):.3e} | "
                 f"phys_rms={info.get('phys_rms', np.nan):.3e}"

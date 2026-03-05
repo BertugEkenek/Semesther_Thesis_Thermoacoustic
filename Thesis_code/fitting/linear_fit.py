@@ -255,24 +255,24 @@ def regression(
     # ------------------------------------------------
     # Logging
     # ------------------------------------------------
-    logger.info("------ OLS Diagnostics ------")
-    logger.info(f"||A||_F                = {A_norm:.3e}")
-    logger.info(f"||b||_2                = {b_norm:.3e}")
-    logger.info(f"||μ||_2                = {mu_norm:.3e}")
+    # logger.info("------ OLS Diagnostics ------")
+    # logger.info(f"||A||_F                = {A_norm:.3e}")
+    # logger.info(f"||b||_2                = {b_norm:.3e}")
+    # logger.info(f"||μ||_2                = {mu_norm:.3e}")
 
-    logger.info(f"||r_fit||_2            = {r_fit_norm:.3e}")
-    logger.info(f"||r_uncorrected||_2    = {r_unc_norm:.3e}")
+    # logger.info(f"||r_fit||_2            = {r_fit_norm:.3e}")
+    # logger.info(f"||r_uncorrected||_2    = {r_unc_norm:.3e}")
 
-    logger.info(f"rel_res (b)            = {rel_res_b:.3e}")
-    logger.info(f"rel_res (scaled)       = {rel_res_scaled:.3e}")
+    # logger.info(f"rel_res (b)            = {rel_res_b:.3e}")
+    # logger.info(f"rel_res (scaled)       = {rel_res_scaled:.3e}")
 
-    logger.info(f"improvement_ratio      = {improvement_ratio:.3e}")
-    logger.info(f"relative_reduction     = {relative_reduction:.3e}")
+    # logger.info(f"improvement_ratio      = {improvement_ratio:.3e}")
+    # logger.info(f"relative_reduction     = {relative_reduction:.3e}")
 
-    logger.info(f"rank                   = {rank}/{min(A.shape)}")
-    logger.info(f"cond(A)                = {cond_A:.3e}")
-    logger.info(f"σ_min/σ_max            = {sigma_ratio:.3e}")
-    logger.info(f"mu (Re, Im)            = ({mu[0]:.3e}, {mu[1]:.3e})")
-    logger.info("-----------------------------")
+    # logger.info(f"rank                   = {rank}/{min(A.shape)}")
+    # logger.info(f"cond(A)                = {cond_A:.3e}")
+    # logger.info(f"σ_min/σ_max            = {sigma_ratio:.3e}")
+    # logger.info(f"mu (Re, Im)            = ({mu[0]:.3e}, {mu[1]:.3e})")
+    # logger.info("-----------------------------")
 
     return mu
