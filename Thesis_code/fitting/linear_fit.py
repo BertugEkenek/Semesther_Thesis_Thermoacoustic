@@ -184,17 +184,28 @@ def regression(
     check_condition_number: bool = True,
     quiet: bool = True,
     rcond=None,
+    label: str | None = None,
 ):
     """
-    Solve min ||A mu - b||_2 and log extended diagnostics.
+    Solve min ||A mu - b||_2.
 
-    Baseline (uncorrected) comparison uses mu = [1, 0]
-    which corresponds to μ = 1 + 0i.
+    Returns
+    -------
+    mu : ndarray, shape (2,)
+        [Re(mu), Im(mu)]
+    info : dict
+        Diagnostic summary for optional higher-level logging.
     """
 
     A = np.asarray(A, float)
     b = np.asarray(b, float)
 
+    if A.ndim != 2:
+        raise ValueError(f"A must be 2D, got ndim={A.ndim}")
+    if b.ndim != 1:
+        raise ValueError(f"b must be 1D, got ndim={b.ndim}")
+    if A.shape[0] != b.shape[0]:
+        raise ValueError(f"A and b row mismatch: A.shape={A.shape}, b.shape={b.shape}")
     if A.shape[1] != 2:
         raise ValueError(
             f"Linear μ-fit expects A with 2 columns (Re/Im). Got A.shape={A.shape}"
@@ -209,7 +220,6 @@ def regression(
     # Residuals
     # ------------------------------------------------
     r_fit = A @ mu - b
-
     mu_uncorrected = np.array([1.0, 0.0])  # μ = 1 + 0i
     r_uncorrected = A @ mu_uncorrected - b
 
@@ -230,49 +240,55 @@ def regression(
         else np.nan
     )
 
-    # ------------------------------------------------
-    # Improvement metrics
-    # ------------------------------------------------
-    improvement_ratio = (
-        r_fit_norm / r_unc_norm if r_unc_norm > 0 else np.nan
-    )
-
+    improvement_ratio = r_fit_norm / r_unc_norm if r_unc_norm > 0 else np.nan
     relative_reduction = (
-        (r_unc_norm - r_fit_norm) / r_unc_norm
-        if r_unc_norm > 0 else np.nan
+        (r_unc_norm - r_fit_norm) / r_unc_norm if r_unc_norm > 0 else np.nan
     )
 
-    # ------------------------------------------------
-    # Conditioning diagnostics
-    # ------------------------------------------------
     cond_A = np.linalg.cond(A) if check_condition_number else np.nan
+    sigma_ratio = (
+        float(np.min(svals) / np.max(svals))
+        if (svals is not None and len(svals) > 0 and np.max(svals) > 0)
+        else np.nan
+    )
 
-    if svals is not None and len(svals) > 0:
-        sigma_ratio = float(np.min(svals) / np.max(svals))
-    else:
-        sigma_ratio = np.nan
+    mu_complex = complex(mu[0], mu[1])
 
-    # ------------------------------------------------
-    # Logging
-    # ------------------------------------------------
-    # logger.info("------ OLS Diagnostics ------")
-    # logger.info(f"||A||_F                = {A_norm:.3e}")
-    # logger.info(f"||b||_2                = {b_norm:.3e}")
-    # logger.info(f"||μ||_2                = {mu_norm:.3e}")
+    info = {
+        "mu": mu.copy(),
+        "mu_complex": mu_complex,
+        "A_shape": A.shape,
+        "rank": int(rank),
+        "A_norm": float(A_norm),
+        "b_norm": float(b_norm),
+        "mu_norm": float(mu_norm),
+        "r_fit_norm": float(r_fit_norm),
+        "r_uncorrected_norm": float(r_unc_norm),
+        "rel_res_b": float(rel_res_b),
+        "rel_res_scaled": float(rel_res_scaled),
+        "improvement_ratio": float(improvement_ratio),
+        "relative_reduction": float(relative_reduction),
+        "cond_A": float(cond_A),
+        "sigma_ratio": float(sigma_ratio),
+    }
 
-    # logger.info(f"||r_fit||_2            = {r_fit_norm:.3e}")
-    # logger.info(f"||r_uncorrected||_2    = {r_unc_norm:.3e}")
+    if not quiet:
+        prefix = f"[Linear μ regression{f' | {label}' if label else ''}]"
+        logger.info(f"{prefix} --------------------------------")
+        logger.info(f"{prefix} A.shape               = {A.shape}")
+        logger.info(f"{prefix} μ                     = {mu_complex.real:.6f} + i {mu_complex.imag:.6f}")
+        logger.info(f"{prefix} ||A||_F               = {A_norm:.3e}")
+        logger.info(f"{prefix} ||b||_2               = {b_norm:.3e}")
+        logger.info(f"{prefix} ||μ||_2               = {mu_norm:.3e}")
+        logger.info(f"{prefix} ||r_fit||_2           = {r_fit_norm:.3e}")
+        logger.info(f"{prefix} ||r_uncorrected||_2   = {r_unc_norm:.3e}")
+        logger.info(f"{prefix} rel_res(b)            = {rel_res_b:.3e}")
+        logger.info(f"{prefix} rel_res(scaled)       = {rel_res_scaled:.3e}")
+        logger.info(f"{prefix} improvement_ratio     = {improvement_ratio:.3e}")
+        logger.info(f"{prefix} relative_reduction    = {relative_reduction:.3e}")
+        logger.info(f"{prefix} rank                  = {rank}/{min(A.shape)}")
+        logger.info(f"{prefix} cond(A)               = {cond_A:.3e}")
+        logger.info(f"{prefix} σ_min/σ_max           = {sigma_ratio:.3e}")
+        logger.info(f"{prefix} --------------------------------")
 
-    # logger.info(f"rel_res (b)            = {rel_res_b:.3e}")
-    # logger.info(f"rel_res (scaled)       = {rel_res_scaled:.3e}")
-
-    # logger.info(f"improvement_ratio      = {improvement_ratio:.3e}")
-    # logger.info(f"relative_reduction     = {relative_reduction:.3e}")
-
-    # logger.info(f"rank                   = {rank}/{min(A.shape)}")
-    # logger.info(f"cond(A)                = {cond_A:.3e}")
-    # logger.info(f"σ_min/σ_max            = {sigma_ratio:.3e}")
-    # logger.info(f"mu (Re, Im)            = ({mu[0]:.3e}, {mu[1]:.3e})")
-    # logger.info("-----------------------------")
-
-    return mu
+    return mu, info

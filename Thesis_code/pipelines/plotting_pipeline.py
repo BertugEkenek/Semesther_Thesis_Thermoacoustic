@@ -133,6 +133,7 @@ def plot_eigenvalue_trajectories(
         )
 
     elif Galerkin == "Second" and correction and mu_order == "Second":
+        #mu = np.array([[1.4159, -0.5317, 1.6046, -0.3789, 1.5533, -0.2846, 1.5555, -0.2722]], dtype=float)
         plot_roots_over_n(
             F_model,
             tau,

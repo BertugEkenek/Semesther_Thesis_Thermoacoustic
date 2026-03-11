@@ -10,19 +10,19 @@ def main():
     # -----------------------------------------------------------
     # 1. User-configurable parameters
     # -----------------------------------------------------------
-    config_name = "BRS"
+    config_name = "Rijke_tube_2"              # "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
 
     flame_model_choice = "Padé"      # "Padé" or "Taylor"
-    mu_order = "First"              # "First" or "Second"
-    Galerkin = "First"              # "First" or "Second"
+    mu_order = "Second"              # "First" or "Second"
+    Galerkin = "Second"              # "First" or "Second"
 
     correction = True
     comparison = True
 
-    fit_branches = [2]            # second-order requires [1,2]
+    fit_branches = [1,2]            # second-order requires [1,2]
 
-    tau_plot = 0.004
+    tau_plot = 0.007
     tau_train_list = [0.004, 0.007]
 
     save_mu = False
@@ -31,7 +31,7 @@ def main():
     save_solution = False
     use_txt_solutions = False
 
-    order = 12
+    order = 15
     R_value = -0.7
 
     # -----------------------------------------------------------
@@ -43,9 +43,12 @@ def main():
     config.mu_one_target_lambda = 0
     config.mu_continuation_lambda = 0
 
-    # Strategy-driven fitting (replaces symmetry/bake/hard flags)
-    config.mu_fit_strategy = "rank1_mag_phasefree"  # "rank1_sym", "rank1_mag_phasefree", "sym_only", "none"
-
+    # Strategy-driven fitting
+    # default:
+    # "none", "sym_only", "rank1_sym", "rank1_mag_phasefree", "rank1_mag_antiphase"
+    # frozen:
+    # "hybrid_analytic_mu12_from_diag", "hybrid_freeze_diag_rank1_mag_phasefree", "hybrid_freeze_diag_sym_coupling", "hybrid_freeze_diag_rank1_mag_antiphase"
+    config.mu_strategy = "rank1_sym"
     # needed for save_solution
     n_values = np.linspace(0.001, 4.0, 11)
 
@@ -60,7 +63,7 @@ def main():
     # 3. Build data_paths_map for training data
     # -----------------------------------------------------------
     n_last = 4
-    number_of_n = 11
+    number_of_n = 101
 
     data_paths_map = {}
     for t in tau_train_list:
@@ -134,3 +137,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    

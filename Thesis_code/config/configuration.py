@@ -24,15 +24,11 @@ class Configuration:
         self.mu_col_rel_thresh = 1e-12
         self.mu_svd_rel_thresh = 1e-10 
 
-        # --- second-order μ fitting strategy (replaces hard/bake/enforce_symmetry flags) ---
-        # Supported examples:
-        #   "rank1_sym"            -> rank-one + mu12=mu21 (coupling implied by diagonals, sign solve optional)
-        #   "rank1_mag_phasefree"  -> rank-one + |mu12|=|mu21|, phase free (implementation-specific)
-        #   "none"                 -> no constraint (full mu12, mu21)
-        #   "sym_only"             -> only mu12=mu21 (no rank-one)
-        self.mu_fit_strategy = "sym_only"
-        
-
+        # single knob for all second-order / hybrid modes
+        # pure: rank1_sym, rank1_mag_phasefree, sym_only, none
+        # hybrid: hybrid_analytic_mu12_from_diag, hybrid_freeze_diag_rank1_mag_phasefree, hybrid_freeze_diag_sym_coupling
+        self.mu_fit_strategy = "hybrid_linear_diag_analytic_coupling"
+                
         if config_type == "Rijke_tube_1":
             
             self.gamma = 1.4

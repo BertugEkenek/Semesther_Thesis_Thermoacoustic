@@ -22,6 +22,14 @@ def _key_ms_to_tau(key_ms: int) -> float:
     """Key back to seconds."""
     return float(key_ms) / 1000.0
 
+def _sqrt_with_pos_real(z: complex) -> complex:
+    """
+    Return sqrt(z) with Re(root) >= 0 (ties broken by Im >= 0).
+    """
+    r = np.sqrt(z)
+    if (r.real < 0) or (np.isclose(r.real, 0.0) and r.imag < 0):
+        r = -r
+    return r
 
 class MUFITPipeline:
     """
@@ -288,6 +296,11 @@ class MUFITPipeline:
 
         mu_array = np.zeros((num_R, 2), dtype=float)
 
+        tau_str = ", ".join(f"{_key_ms_to_tau(k):.4f}s" for k in tau_keys)
+        self.logger.info(
+            f"[Linear μ] Starting fit | branch={branch_id} | taus=[{tau_str}] | num_R={num_R}"
+        )
+
         for i in range(num_R):
             A_all, b_all = [], []
 
@@ -316,15 +329,27 @@ class MUFITPipeline:
             A_tot = np.vstack(A_all)
             b_tot = np.concatenate(b_all)
 
-            mu = linfit.regression(A_tot, b_tot, check_condition_number=True, quiet=False)
+            mu, info = linfit.regression(
+                A_tot,
+                b_tot,
+                check_condition_number=True,
+                quiet=True,   # keep solver quiet here
+                label=f"branch={branch_id}, R={R[i]:.4f}",
+            )
             mu_array[i, :] = mu
 
+            mu_c = info["mu_complex"]
             self.logger.info(
-                f"[Linear μ | branch={branch_id}] R[{i}]={R[i]} | μ={mu} | cond(A_tot)={np.linalg.cond(A_tot):.2e}"
+                f"[Linear μ] branch={branch_id} | R={R[i]:.4f} | "
+                f"μ={mu_c.real:.6f} + i {mu_c.imag:.6f} | "
+                f"cond={info['cond_A']:.2e} | "
+                f"rank={info['rank']}/{min(A_tot.shape)} | "
+                f"rel_res={info['rel_res_b']:.3e} | "
+                f"reduction={info['relative_reduction']:.3e}"
             )
 
+        self.logger.info(f"[Linear μ] Completed fit for branch={branch_id}")
         return mu_array, R
-
     def find_mu_fit_linear_selected_branches(self, config, tau_train_list: list[float | int]):
         results = {}
         for b in self.fit_branches:
@@ -344,9 +369,13 @@ class MUFITPipeline:
             raise ValueError("Second-order μ-fit requires fit_branches=[1,2].")
 
         # validate strategy presence early (nice error)
-        if not hasattr(config, "mu_fit_strategy"):
-            raise AttributeError("config.mu_fit_strategy must be set for second-order μ-fit (e.g. 'rank1_sym', 'sym_only', 'none', 'rank1_mag_phasefree').")
-
+        if not (hasattr(config, "mu_strategy") or hasattr(config, "mu_fit_strategy")):
+            raise AttributeError(
+                "Set config.mu_strategy (preferred single knob), or config.mu_fit_strategy (legacy). "
+                "Examples: 'sym_only', 'none', 'rank1_sym', 'rank1_mag_phasefree', "
+                "'hybrid_analytic_mu12_from_diag', 'hybrid_freeze_diag_rank1_mag_phasefree', "
+                "'hybrid_freeze_diag_sym_coupling'."
+            )
         tau_keys = [_tau_to_key_ms(t) for t in tau_train_list]
         if not tau_keys:
             raise ValueError("tau_train_list must be non-empty.")
@@ -386,12 +415,14 @@ class MUFITPipeline:
 
                 w1 = st1[i, 0, :].imag
                 sig1 = st1[i, 0, :].real
-                init_mu11 = _linear_mu_complex(1, tau_s, w1, sig1, s_ref=ev1[i])
-
+                init_mu11 = self._linear_mu_complex_stacked_over_taus(
+                    config, branch_id=1, tau_keys=tau_keys, R_index=i
+                )
                 w2 = st2[i, 0, :].imag
                 sig2 = st2[i, 0, :].real
-                init_mu22 = _linear_mu_complex(2, tau_s, w2, sig2, s_ref=ev2[i])
-
+                init_mu22 = self._linear_mu_complex_stacked_over_taus(
+                    config, branch_id=2, tau_keys=tau_keys, R_index=i
+                )
             except Exception:
                 init_mu11 = None
                 init_mu22 = None
@@ -423,7 +454,7 @@ class MUFITPipeline:
                     dict(tag=f"tau={tau_s:.4f}_b2", tau=tau_s, w=w2, sigma=sig2, s_ref=s2, s_1=s1, s_2=s2)
                 )
 
-            p_opt, info = sofit.solve_mu_per_R(
+            p_opt, info = sofit.solve_mu_per_R_dispatch(
                 config=config,
                 n=n,
                 data_blocks=data_blocks,
@@ -436,12 +467,23 @@ class MUFITPipeline:
             prev_p = p_opt
             p_list.append(p_opt)
 
+            strategy = info.get("mu_fit_strategy", "???")
+            mu11 = info.get("mu11", np.nan + 1j*np.nan)
+            mu22 = info.get("mu22", np.nan + 1j*np.nan)
+            mu12 = info.get("mu12", np.nan + 1j*np.nan)
+            mu21 = info.get("mu21", np.nan + 1j*np.nan)
+
             self.logger.info(
-                f"[Second-order μ] R[{i}]={R[i]:.2e} | "
-                f"strategy={getattr(config, 'mu_fit_strategy', '???')} | "
-                f"cost={info.get('global_cost', np.nan):.3e} | "
-                f"phys_cost={info.get('phys_cost', np.nan):.3e} | "
-                f"phys_rms={info.get('phys_rms', np.nan):.3e}"
+                f"[Second-order μ] R={R[i]:.6f} | "
+                f"strategy={strategy} | "
+                f"μ11={mu11.real:.6f}+i{mu11.imag:.6f} | "
+                f"μ22={mu22.real:.6f}+i{mu22.imag:.6f} | "
+                f"μ12={mu12.real:.6f}+i{mu12.imag:.6f} | "
+                f"μ21={mu21.real:.6f}+i{mu21.imag:.6f} | "
+                f"cond={info.get('cond_A_phys', np.nan):.2e} | "
+                f"rank={info.get('rank_A_phys', '?')} | "
+                f"phys_rms={info.get('phys_rms', np.nan):.3e} | "
+                f"cost={info.get('global_cost', np.nan):.3e}"
             )
 
         mu_array = np.asarray(p_list, dtype=float)
@@ -450,3 +492,42 @@ class MUFITPipeline:
         EV0_ret = np.hstack(self.data_store[tau_init]["EV0_b1"]).ravel()
 
         return mu_array, R, EV0_ret
+    
+    def _linear_mu_complex_stacked_over_taus(
+            self,
+            config,
+            *,
+            branch_id: int,
+            tau_keys: list[int],
+            R_index: int,
+        ) -> complex:
+        n = self.n
+        A_all, b_all = [], []
+
+        for tau_ms in tau_keys:
+            d = self.data_store[tau_ms]
+            tau_s = _key_ms_to_tau(tau_ms)
+
+            if branch_id == 1:
+                st = d["EV_traj_b1_stacked"]
+                s_ref = np.hstack(d["EV0_b1"]).ravel()[R_index]
+                cfg = config.get_branch_config(1)
+            else:
+                st = d["EV_traj_b2_stacked"]
+                s_ref = np.hstack(d["EV0_b2"]).ravel()[R_index]
+                cfg = config.get_branch_config(2)
+
+            w = st[R_index, 0, :].imag
+            sig = st[R_index, 0, :].real
+
+            A = linfit.build_A(n, tau_s, w, sig, s_ref=s_ref)
+            b = linfit.build_b(cfg, n, tau_s, w, sig, s_ref=s_ref)
+
+            A_all.append(A)
+            b_all.append(b)
+
+        A_tot = np.vstack(A_all)
+        b_tot = np.concatenate(b_all)
+
+        mu_re_im = linfit.regression(A_tot, b_tot, check_condition_number=True, quiet=True)
+        return mu_re_im[0] + 1j * mu_re_im[1]
