@@ -404,15 +404,14 @@ class MUFITPipeline:
                 ev1 = np.hstack(d_init["EV0_b1"]).ravel()
                 ev2 = np.hstack(d_init["EV0_b2"]).ravel()
 
-                def _linear_mu_complex(branch_id, tau_s, w_vec, sig_vec, s_ref):
-                    cfg = config.get_branch_config(branch_id)
-                    A = linfit.build_A(n, tau_s, w_vec, sig_vec, s_ref)
-                    b = linfit.build_b(cfg, n, tau_s, w_vec, sig_vec, s_ref)
-                    mu_re_im = linfit.regression(A, b, check_condition_number=True, quiet=True)
-                    return mu_re_im[0] + 1j * mu_re_im[1]
+                # def _linear_mu_complex(branch_id, tau_s, w_vec, sig_vec, s_ref):
+                #     cfg = config.get_branch_config(branch_id)
+                #     A = linfit.build_A(n, tau_s, w_vec, sig_vec, s_ref)
+                #     b = linfit.build_b(cfg, n, tau_s, w_vec, sig_vec, s_ref)
+                #     mu_re_im = linfit.regression(A, b, check_condition_number=True, quiet=True)
+                #     return mu_re_im[0] + 1j * mu_re_im[1]
 
                 tau_s = _key_ms_to_tau(tau_init)
-
                 w1 = st1[i, 0, :].imag
                 sig1 = st1[i, 0, :].real
                 init_mu11 = self._linear_mu_complex_stacked_over_taus(
@@ -529,5 +528,5 @@ class MUFITPipeline:
         A_tot = np.vstack(A_all)
         b_tot = np.concatenate(b_all)
 
-        mu_re_im = linfit.regression(A_tot, b_tot, check_condition_number=True, quiet=True)
+        mu_re_im,info = linfit.regression(A_tot, b_tot, check_condition_number=True, quiet=True)
         return mu_re_im[0] + 1j * mu_re_im[1]

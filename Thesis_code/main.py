@@ -10,7 +10,7 @@ def main():
     # -----------------------------------------------------------
     # 1. User-configurable parameters
     # -----------------------------------------------------------
-    config_name = "Rijke_tube_2"              # "Rijke_tube_1", "Rijke_tube_2", "BRS"
+    config_name = "Rijke_tube_1"              # "Rijke_tube_1", "Rijke_tube_2", "BRS"
     config = Configuration(config_name)
 
     flame_model_choice = "Padé"      # "Padé" or "Taylor"
@@ -32,7 +32,7 @@ def main():
     use_txt_solutions = False
 
     order = 15
-    R_value = -0.7
+    R_value = -0.75
 
     # -----------------------------------------------------------
     # 2. Configuration tuning
@@ -55,7 +55,7 @@ def main():
     window = 3000
     show_tax = True
     show_fig = True
-    save_fig = True
+    save_fig = False
 
     nprandomsigma = 0.7
 

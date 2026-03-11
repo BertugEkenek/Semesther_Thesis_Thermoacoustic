@@ -158,7 +158,7 @@ class SolveEigenWorkflow:
         for R_val in np.asarray(R, dtype=float):
             R_match = self._match_R_from_available(R_val, available_R, atol=atol)
             nuR = mat_nu[R_match]
-
+            #print(nuR)
             mu11 = nuR["nu11"] / nu_cfg[0]
             mu22 = nuR["nu22"] / nu_cfg[1]
             mu12 = nuR["nu12"] / nu_cfg[2]
@@ -172,7 +172,6 @@ class SolveEigenWorkflow:
             ])
 
         mu_array = np.asarray(mu_rows, dtype=float)
-
         self.logger.info("Constructed μ-array from MAT ν data using μ = ν_mat / ν_config.")
         return mu_array
 
