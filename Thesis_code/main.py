@@ -20,10 +20,10 @@ def main():
     correction = True
     comparison = True
 
-    fit_branches = [1,2]            # second-order requires [1,2]
+    fit_branches = [1, 2]            # second-order requires [1,2]
 
-    tau_plot = 0.007
-    tau_train_list = [0.004, 0.007]
+    tau_plot = 0.004
+    tau_train_list = [0.004,0.007]
 
     save_mu = False
     use_saved_mu = False
@@ -32,7 +32,7 @@ def main():
     use_txt_solutions = False
 
     order = 15
-    R_value = -0.75
+    R_value = -0.9
 
     # -----------------------------------------------------------
     # 2. Configuration tuning
@@ -52,10 +52,10 @@ def main():
     # needed for save_solution
     n_values = np.linspace(0.001, 4.0, 11)
 
-    window = 3000
+    window = 2200
     show_tax = True
     show_fig = True
-    save_fig = False
+    save_fig = True
 
     nprandomsigma = 0.7
 
@@ -109,7 +109,7 @@ def main():
     workflow = SolveEigenWorkflow(config, mu_pipeline, logger)
 
     # initialize_plot() takes basename only; it constructs the save_dir itself
-    filename = f"eigenvalues_{config.name}_{Galerkin}_{flame_model_choice}_order_{order}_tau_{int(tau_plot*1000)}ms_R_{int(R_value*100)}.pdf"
+    filename = f"roots_{config.name}_{Galerkin}_{flame_model_choice}_order_{order}_tau_{int(tau_plot*1000)}ms_strategy_{config.mu_strategy}_R_{int(R_value*100)}.pdf"
 
     workflow.run(
         correction=correction,
